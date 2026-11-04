@@ -1,0 +1,54 @@
+@api = http://localhost:5080/api/v1
+
+### 目錄（版本下拉選單）
+GET {{api}}/catalog?market=TW
+
+### 版本規格：1 = 後輪驅動、2 = Long Range、3 = Performance
+GET {{api}}/trims/3
+
+### 參數化模型資源
+GET {{api}}/assets/1
+
+### 部位與建議配件
+GET {{api}}/parts
+
+### 建立配置清單
+# @name create
+POST {{api}}/builds
+Content-Type: application/json
+
+{ "name": "我的 Model Y", "trimId": 1, "paintColorId": 1 }
+
+###
+@buildId = {{create.response.body.$.id}}
+
+### 新增配件
+# @name acc
+POST {{api}}/builds/{{buildId}}/accessories
+Content-Type: application/json
+
+{
+  "partCode": "front-bumper",
+  "name": "全車犀牛皮 PPF",
+  "assetId": 1,
+  "priceTwd": 68000,
+  "position": { "p": [2.46, 0.48, 0.3], "n": [1, 0, 0] }
+}
+
+### 修改狀態
+PATCH {{api}}/builds/{{buildId}}/accessories/{{acc.response.body.$.id}}
+Content-Type: application/json
+
+{ "status": "purchased" }
+
+### 切換版本
+PATCH {{api}}/builds/{{buildId}}
+Content-Type: application/json
+
+{ "trimId": 3 }
+
+### 取得配置清單
+GET {{api}}/builds/{{buildId}}
+
+### 健康檢查
+GET http://localhost:5080/health
