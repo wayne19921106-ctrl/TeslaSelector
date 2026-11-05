@@ -75,7 +75,7 @@ public class CatalogController(AppDbContext db) : ControllerBase
 
         var g = trim.Generation;
         return new TrimDetailDto(
-            trim.Id, trim.Code, trim.Name, trim.ModelYear, trim.Market, trim.Drivetrain,
+            trim.Id, trim.Code, trim.Name, trim.ModelYear, trim.Market, trim.Drivetrain, trim.StyleVariant,
             new GenerationRefDto(g.Id, g.Code, g.Name, g.Model.Name, g.Model.Make.Name),
             trim.Spec.ToDto(),
             trim.Tires.OrderBy(x => x.Axle == "front" ? 0 : 1).Select(x => x.ToDto()).ToList(),

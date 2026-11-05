@@ -70,7 +70,7 @@
 
     const openState = S.car ? Object.fromEntries(S.car.openings.map((o) => [o.code, S.car.isOpen(o.code)])) : {};
     if (S.car) S.car.dispose();
-    S.car = gen({ THREE, params: asset.params, spec: trim.specs, tires: trim.tires, mappings: asset.partMappings, openings: asset.openings });
+    S.car = gen({ THREE, params: asset.params, spec: trim.specs, tires: trim.tires, mappings: asset.partMappings, openings: asset.openings, variant: trim.styleVariant });
     scene.add(S.car.group);
     for (const [code, open] of Object.entries(openState)) S.car.setOpen(code, open, true);
     S.car.step(0);
@@ -436,7 +436,7 @@
   requestAnimationFrame(tick);
 
   // 開發用：在主控台以 AV.debug.state 檢視目前狀態
-  AV.debug = { get state() { return S; }, camera, hitAt };
+  AV.debug = { get state() { return S; }, camera, controls, hitAt };
 
   /* ---------- Boot ---------- */
   const BUILD_KEY = (mode) => 'av.buildId.' + mode;

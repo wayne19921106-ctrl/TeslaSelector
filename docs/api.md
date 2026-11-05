@@ -37,9 +37,9 @@ Query：`market`（選填，預設 `TW`）。只回傳 `is_active` 的版本。
       "generations": [{
         "id": 1, "code": "juniper", "name": "煥新版", "startYear": 2025, "endYear": null,
         "trims": [
-          { "id": 1, "code": "rwd", "name": "後輪驅動", "modelYear": 2026, "market": "TW", "drivetrain": "RWD" },
-          { "id": 2, "code": "long-range-awd", "name": "Long Range 全輪驅動", "modelYear": 2026, "market": "TW", "drivetrain": "AWD" },
-          { "id": 3, "code": "performance", "name": "Performance 全輪驅動", "modelYear": 2026, "market": "TW", "drivetrain": "AWD" }
+          { "id": 1, "code": "rwd", "name": "後輪驅動", "modelYear": 2026, "market": "TW", "drivetrain": "RWD", "styleVariant": "standard" },
+          { "id": 2, "code": "long-range-awd", "name": "Long Range 全輪驅動", "modelYear": 2026, "market": "TW", "drivetrain": "AWD", "styleVariant": "premium" },
+          { "id": 3, "code": "performance", "name": "Performance 全輪驅動", "modelYear": 2026, "market": "TW", "drivetrain": "AWD", "styleVariant": "performance" }
         ]
       }]
     }]
@@ -52,7 +52,7 @@ Query：`market`（選填，預設 `TW`）。只回傳 `is_active` 的版本。
 ```json
 {
   "id": 3, "code": "performance", "name": "Performance 全輪驅動",
-  "modelYear": 2026, "market": "TW", "drivetrain": "AWD",
+  "modelYear": 2026, "market": "TW", "drivetrain": "AWD", "styleVariant": "performance",
   "generation": { "id": 1, "code": "juniper", "name": "煥新版", "modelName": "Model Y", "makeName": "Tesla" },
   "specs": {
     "lengthMm": 4796, "widthMm": 1921, "widthMirrorsFoldedMm": 1982, "widthMirrorsUnfoldedMm": 2128,
@@ -72,6 +72,7 @@ Query：`market`（選填，預設 `TW`）。只回傳 `is_active` 的版本。
 }
 ```
 
+- `styleVariant`：外觀版本（`standard`／`premium`／`performance`），前端用它從模型資源的 `params.variants` 取出這個版本的燈具、保桿、擾流板與輪框參數。台灣 2026 年式：後輪驅動 = standard、Long Range = premium、Performance = performance。
 - `overallDiameterMm` = 輪圈直徑 × 25.4 + 2 × 胎寬 × 扁平比，四捨五入。
 - `assets` 包含套用到整個世代（`trim_id is null`）與只套用此版本的資源，依 `tier`（free 在前）排序。
 - 找不到或未啟用：404。

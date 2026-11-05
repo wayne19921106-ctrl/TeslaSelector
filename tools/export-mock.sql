@@ -25,7 +25,7 @@ catalog as (
                jsonb_build_object('id', generation_id, 'code', g_code, 'name', g_name,
                  'startYear', start_year, 'endYear', end_year,
                  'trims', jsonb_agg(jsonb_build_object('id', id, 'code', code, 'name', name,
-                   'modelYear', model_year, 'market', market, 'drivetrain', drivetrain)
+                   'modelYear', model_year, 'market', market, 'drivetrain', drivetrain, 'styleVariant', style_variant)
                    order by model_year desc, sort_order)) gn
         from trim_rows
         group by mk_code, mk_name, m_code, m_name, m_sort, g_sort, generation_id, g_code, g_name, start_year, end_year
@@ -35,7 +35,7 @@ catalog as (
 ),
 trim_detail as (
   select jsonb_object_agg(t.id::text, jsonb_build_object(
-    'id', t.id, 'code', t.code, 'name', t.name, 'modelYear', t.model_year, 'market', t.market, 'drivetrain', t.drivetrain,
+    'id', t.id, 'code', t.code, 'name', t.name, 'modelYear', t.model_year, 'market', t.market, 'drivetrain', t.drivetrain, 'styleVariant', t.style_variant,
     'generation', jsonb_build_object('id', t.generation_id, 'code', t.g_code, 'name', t.g_name, 'modelName', t.m_name, 'makeName', t.mk_name),
     'specs', jsonb_build_object(
       'lengthMm', s.length_mm, 'widthMm', s.width_mm, 'widthMirrorsFoldedMm', s.width_mirrors_folded_mm,

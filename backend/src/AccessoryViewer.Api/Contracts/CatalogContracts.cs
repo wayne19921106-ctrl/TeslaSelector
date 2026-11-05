@@ -7,11 +7,11 @@ public sealed record CatalogDto(IReadOnlyList<MakeDto> Makes);
 public sealed record MakeDto(string Code, string Name, IReadOnlyList<ModelDto> Models);
 public sealed record ModelDto(string Code, string Name, IReadOnlyList<GenerationDto> Generations);
 public sealed record GenerationDto(int Id, string Code, string Name, short StartYear, short? EndYear, IReadOnlyList<TrimSummaryDto> Trims);
-public sealed record TrimSummaryDto(int Id, string Code, string Name, short ModelYear, string Market, string Drivetrain);
+public sealed record TrimSummaryDto(int Id, string Code, string Name, short ModelYear, string Market, string Drivetrain, string StyleVariant);
 
 // ---- /trims/{id} --------------------------------------------------------------
 public sealed record TrimDetailDto(
-    int Id, string Code, string Name, short ModelYear, string Market, string Drivetrain,
+    int Id, string Code, string Name, short ModelYear, string Market, string Drivetrain, string StyleVariant,
     GenerationRefDto Generation,
     TrimSpecDto Specs,
     IReadOnlyList<TireDto> Tires,

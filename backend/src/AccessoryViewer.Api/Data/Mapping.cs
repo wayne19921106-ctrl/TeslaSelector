@@ -18,7 +18,7 @@ public static class Mapping
     private sealed record PositionJson(double[] P, double[] N);
 
     public static TrimSummaryDto ToSummary(this Trim t) =>
-        new(t.Id, t.Code, t.Name, t.ModelYear, t.Market, t.Drivetrain);
+        new(t.Id, t.Code, t.Name, t.ModelYear, t.Market, t.Drivetrain, t.StyleVariant);
 
     public static TrimSpecDto ToDto(this TrimSpec s)
     {

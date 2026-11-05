@@ -12,6 +12,7 @@ db/
   migrations/20261104000003_member_entitlements.sql 會員方案、訂閱、單一模型授權、權限判斷函式
   migrations/20261104000004_fix_touch_updated_at_search_path.sql
   migrations/20261104000005_split_admin_member_schemas.sql 後台搬到 admin、會員搬到 member schema
+  migrations/20261105000006_trim_style_variants.sql 版本外觀（Standard／Premium／Performance）
   seed/20261104000002_seed_model_y_juniper.sql 車型、規格、部位、參數化模型
 docs/api.md                                    API 規格
 backend/                                       .NET 8 Web API（EF Core + Npgsql）
@@ -48,6 +49,7 @@ tools/
 - **模型資源**：`model_assets.asset_type` 分 `parametric`（前端依規格生成）與 `gltf`（Supabase Storage 的 .glb）；`tier` 分 `free` / `premium`。第一階段 premium 只回傳中繼資料（`locked: true`）。
 - **部位辨識**：`asset_part_mappings` 用座標範圍（zone）或物件名稱（mesh）對應到 `parts`。日後換成 .glb 模型時改用 mesh 對應，前端互動不變。
 - **開啟件**：`asset_openings` 記錄鉸鏈、旋轉軸、角度與帶動的零件。
+- **版本外觀**：`trims.style_variant` 指定版本使用哪一組外觀（台灣 2026 年式：後輪驅動 = standard、Long Range = premium、Performance = performance），前端從 `model_assets.params.variants` 取出燈具、前保桿、擾流板與輪框參數。燈具與飾條以射線貼合車身表面生成，參數只需要高度與左右範圍。外觀參數是參考 Tesla 公開的外觀渲染圖目視估計，網站本身不使用 Tesla 的圖片。
 - **參考座標系**：部位範圍、鉸鏈與配件標註位置都存在模型的參考座標系，前端依版本規格映射成實際尺寸，所以切換版本後標註仍在同一部位。
 - **使用者資料**：`builds`（配置清單）與 `build_accessories`（配件、狀態、價格、備註、位置）。`builds.owner_id` 連到 `member.member_profiles(id)`，未登入時為 null。
 - **會員與付費**：`plans`（免費／付費方案）→ `plan_tiers`（方案可用的模型等級）；`member_subscriptions`（會員訂閱，來源 admin／payment／promo，後台開通記錄 `admin_accounts`）；`member_asset_grants`（單一模型授權）。以 `viewer.member_can_access_asset(member_id, asset_id)` 判斷權限：免費模型人人可用，付費模型需會員狀態為 active 且有有效訂閱或授權。

@@ -51,6 +51,8 @@ public class Trim
     public string Code { get; set; } = "";
     public string Name { get; set; } = "";
     public string Drivetrain { get; set; } = "";
+    /// <summary>外觀版本：standard / premium / performance，對應模型參數 variants 的 key。</summary>
+    public string StyleVariant { get; set; } = "premium";
     public int SortOrder { get; set; }
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
