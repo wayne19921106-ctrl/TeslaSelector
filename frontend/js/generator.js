@@ -87,6 +87,8 @@
     return {
       uHMin: { value: new THREE.Vector3() }, uHMax: { value: new THREE.Vector3() }, uHOn: { value: 0 },
       uSMin: { value: new THREE.Vector3() }, uSMax: { value: new THREE.Vector3() }, uSOn: { value: 0 },
+      uH2Min: { value: new THREE.Vector3() }, uH2Max: { value: new THREE.Vector3() },
+      uS2Min: { value: new THREE.Vector3() }, uS2Max: { value: new THREE.Vector3() },
       uTint: { value: new THREE.Color(ACCENT) },
       uSeam: { value: seams ? 1 : 0 },
       uDoorX: { value: new THREE.Vector3(...(seams ? seams.door_x : [99, 99, 99])) },
@@ -118,7 +120,7 @@
         sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvLoc = aRef;');
       sh.fragmentShader = [
         'varying vec3 vLoc;',
-        'uniform vec3 uHMin, uHMax, uSMin, uSMax, uTint, uKMin, uKMax, uDoorX, uSeamY;',
+        'uniform vec3 uHMin, uHMax, uSMin, uSMax, uH2Min, uH2Max, uS2Min, uS2Max, uTint, uKMin, uKMax, uDoorX, uSeamY;',
         'uniform vec4 uSeamA;',
         'uniform float uHOn, uSOn, uSeam, uMode;',
         'uniform vec3 uCMin[8];', 'uniform vec3 uCMax[8];',
@@ -135,8 +137,8 @@
           float gate = line(vLoc.x, uSeamA.y) * step(uSeamY.z, vLoc.y);
           diffuseColor.rgb *= 1.0 - 0.75 * max(max(sm * side, hood), gate);
         }
-        float h = uHOn * inBox(uHMin, uHMax);
-        float s = uSOn * inBox(uSMin, uSMax);
+        float h = uHOn * max(inBox(uHMin, uHMax), inBox(uH2Min, uH2Max));
+        float s = uSOn * max(inBox(uSMin, uSMax), inBox(uS2Min, uS2Max));
         diffuseColor.rgb = mix(diffuseColor.rgb, uTint, max(s * 0.6, h * 0.32));
         if (!gl_FrontFacing) diffuseColor.rgb = vec3(0.045);`);
     };
@@ -160,8 +162,8 @@
     }
     zones.body.sort((a, b) => a.priority - b.priority);
     zones.glass.sort((a, b) => a.priority - b.priority);
-    const zoneByCode = {};
-    for (const s of ['body', 'glass']) for (const z of zones[s]) zoneByCode[z.code] = { ...z, surface: s };
+    const zoneByCode = {};   // 車項 → 座標範圍（一個車項可有多個，例如車身玻璃 = 左右側窗）
+    for (const s of ['body', 'glass']) for (const z of zones[s]) (zoneByCode[z.code] = zoneByCode[z.code] || []).push({ ...z, surface: s });
 
     // ---- 外殼：參考幾何 → 量測 → 映射 --------------------------------------
     const bodyGeo = refShell(THREE, params.body);
@@ -315,9 +317,38 @@
       attachTo(head, openingOf(key)); attachTo(stalk, openingOf(key));
     }
 
+    // 門把（隨車門開啟）與充電口：貼合車身側面
+    {
+      const F = params.fixtures || {};
+      /** 從車側（side = -1 左、1 右）往內打射線，在車身側面放一個薄片零件。 */
+      const onSide = (key, x, y, side, size, mat) => {
+        const dir = new THREE.Vector3(0, 0, -side);
+        const h = hitBody(map.fwd(x, y, side * 4), dir);
+        if (!h) return null;
+        const m = partMesh(key, box(size[0], size[1], size[2]), mat);
+        m.position.copy(h.p).addScaledVector(h.n, size[2] * 0.3);
+        m.rotation.y = Math.atan2(h.n.x, h.n.z);
+        return m;
+      };
+      const dh = F.door_handles;
+      if (dh) {
+        for (const [key, x, side] of [['handle-FL', dh.front_x, -1], ['handle-FR', dh.front_x, 1],
+                                      ['handle-RL', dh.rear_x, -1], ['handle-RR', dh.rear_x, 1]]) {
+          const m = onSide(key, x, dh.y, side, [dh.length, 0.028, 0.018], std(0x15171a, { roughness: 0.4, metalness: 0.3 }));
+          if (m) attachTo(m, openingOf(key));
+        }
+      }
+      const cp = F.charge_port;
+      if (cp) {
+        const m = onSide('charge-port', cp.x, cp.y, cp.side, [cp.size[0], cp.size[1], 0.012], std(0x2a2d31, { roughness: 0.5 }));
+        if (m) group.add(m);
+      }
+    }
+
     // 輪胎與輪框：依規格的輪胎尺寸與輪距生成
     const tireBy = Object.fromEntries(tires.map((t) => [t.axle, t]));
-    for (const [key, axle, xs, side] of [['wheel-FL', 'front', 1, -1], ['wheel-FR', 'front', 1, 1], ['wheel-RL', 'rear', -1, -1], ['wheel-RR', 'rear', -1, 1]]) {
+    // 點輪胎 → 輪胎；點輪框外圈與輪輻 → 輪框；點輪輻之間的底盤與中心蓋 → 節能蓋
+    for (const [axle, xs, side] of [['front', 1, -1], ['front', 1, 1], ['rear', -1, -1], ['rear', -1, 1]]) {
       const t = tireBy[axle] || tires[0];
       const R = t.overallDiameterMm / 2000, hw = t.widthMm / 2000, rimR = (t.rimDiameterIn * 25.4) / 2000;
       const track = (axle === 'front' ? spec.frontTrackMm : spec.rearTrackMm) / 1000;
@@ -329,17 +360,17 @@
       const darkMat = std(0x1c1f23, { metalness: 0.2, roughness: 0.55 });
       const prof = [[rimR, -hw], [R - 0.042, -hw * 1.01], [R - 0.012, -hw * 0.92], [R, -hw * 0.64], [R, hw * 0.64], [R - 0.012, hw * 0.92], [R - 0.042, hw * 1.01], [rimR, hw]]
         .map((p) => new THREE.Vector2(p[0], p[1]));
-      const tire = partMesh(key, new THREE.LatheGeometry(prof, 64), tireMat); tire.rotation.x = Math.PI / 2; w.add(tire);
-      const disc = partMesh(key, new THREE.CylinderGeometry(rimR + 0.001, rimR + 0.001, 0.04, 48), darkMat, null);
+      const tire = partMesh('tire', new THREE.LatheGeometry(prof, 64), tireMat); tire.rotation.x = Math.PI / 2; w.add(tire);
+      const disc = partMesh('aero-cover', new THREE.CylinderGeometry(rimR + 0.001, rimR + 0.001, 0.04, 48), darkMat, null);
       disc.position.z = side * (hw - 0.05); disc.rotation.x = Math.PI / 2; w.add(disc);
-      const lip = partMesh(key, new THREE.TorusGeometry(rimR - 0.01, 0.012, 8, 64), rimMat, null); lip.position.z = side * (hw - 0.025); w.add(lip);
+      const lip = partMesh('rim', new THREE.TorusGeometry(rimR - 0.01, 0.012, 8, 64), rimMat, null); lip.position.z = side * (hw - 0.025); w.add(lip);
       const spokes = wheelV.spokes || (t.rimDiameterIn >= 21 ? 10 : 5);
       for (let i = 0; i < spokes; i++) {
         const a = (i / spokes) * Math.PI * 2;
-        const sp = partMesh(key, box(rimR * 0.82, spokes > 5 ? 0.026 : 0.05, 0.03), rimMat, null);
+        const sp = partMesh('rim', box(rimR * 0.82, spokes > 5 ? 0.026 : 0.05, 0.03), rimMat, null);
         sp.position.set(Math.cos(a) * rimR * 0.52, Math.sin(a) * rimR * 0.52, side * (hw - 0.025)); sp.rotation.z = a; w.add(sp);
       }
-      const hub = partMesh(key, new THREE.CylinderGeometry(0.055, 0.055, 0.04, 24), darkMat, null);
+      const hub = partMesh('aero-cover', new THREE.CylinderGeometry(0.055, 0.055, 0.04, 24), darkMat, null);
       hub.position.z = side * (hw - 0.015); hub.rotation.x = Math.PI / 2; w.add(hub);
       group.add(w);
     }
@@ -354,18 +385,22 @@
       add('floor', box(3.0, 0.06, 1.6 * map.kz), std(0x17191c), [-0.45, 0.34, 0]);
       for (const z of [-0.38, 0.38]) {
         add('seat-front', box(0.5, 0.14, 0.5), std(0x2c2f34), [0.18, 0.5, z]);
-        add('seat-front', box(0.14, 0.62, 0.48), std(0x2c2f34), [-0.14, 0.86, z], [0, 0, 0.2]);
+        add('front-seatback', box(0.14, 0.62, 0.48), std(0x2c2f34), [-0.14, 0.86, z], [0, 0, 0.2]);
         add('seat-front', box(0.1, 0.18, 0.28), std(0x2c2f34), [-0.24, 1.26, z], [0, 0, 0.2]);
       }
       add('seat-rear', box(0.5, 0.14, 1.4), std(0x2c2f34), [-0.85, 0.5, 0]);
-      add('seat-rear', box(0.14, 0.6, 1.4), std(0x2c2f34), [-1.17, 0.86, 0], [0, 0, 0.25]);
+      add('rear-seatback', box(0.14, 0.6, 1.4), std(0x2c2f34), [-1.17, 0.86, 0], [0, 0, 0.25]);
       for (const z of [-0.45, 0, 0.45]) add('seat-rear', box(0.09, 0.15, 0.26), std(0x2c2f34), [-1.27, 1.24, z], [0, 0, 0.25]);
       add('console', box(0.75, 0.22, 0.22), std(0x202327), [0.3, 0.5, 0]);
       add('dash', box(0.45, 0.22, 1.55 * map.kz), std(0x1f2226), [0.92, 0.86, 0]);
       add('screen', box(0.025, 0.24, 0.38), std(0x0a0c0f, { emissive: 0x2a4a6a, emissiveIntensity: 0.9, roughness: 0.2 }), [0.66, 1.08, 0], [0, 0, 0.15]);
+      add('rear-screen', box(0.02, 0.11, 0.17), std(0x0a0c0f, { emissive: 0x2a4a6a, emissiveIntensity: 0.9, roughness: 0.2 }), [-0.09, 0.66, 0], [0, 0, -0.2]);
       add('steer', new THREE.TorusGeometry(0.16, 0.022, 10, 40), std(0x18191c), [0.58, 0.98, -0.38], [0, Math.PI / 2, 0.35]);
       add('frunk-tub', box(0.85, 0.28, 1.25), std(0x1d2024), [1.62, 0.5, 0]);
       add('trunk', box(0.95, 0.06, 1.5), std(0x1a1c1f), [-1.85, 0.56, 0]);
+      for (const [key, z] of [['trunk-pocket-L', -0.70], ['trunk-pocket-R', 0.70]]) {
+        add(key, box(0.42, 0.18, 0.08), std(0x1d2024), [-1.80, 0.68, z]);
+      }
     }
 
     // ---- 查詢 -------------------------------------------------------------
@@ -393,13 +428,23 @@
     }
     /** 該部位（與點）由哪個開啟件帶動，沒有則為 null。 */
     function openingFor(partCode, refP) {
-      for (const o of ops) if ((o.meshKeys || []).some((k) => meshKeyToPart[k] === partCode)) return o.code;
-      const z = zoneByCode[partCode];
-      if (!z) return null;
       const v = Array.isArray(refP) ? new THREE.Vector3(...refP) : refP;
-      const key = z.surface === 'body' ? 'bodyRegion' : 'glassRegion';
-      const o = ops.find((x) => x[key] && inBox(v, x[key]));
-      return o ? o.code : null;
+      // 獨立零件：同一車項可能分屬不同開啟件（左右後照鏡），取鉸鏈最近的
+      const carriers = ops.filter((o) => (o.meshKeys || []).some((k) => meshKeyToPart[k] === partCode));
+      if (carriers.length === 1 || (carriers.length > 1 && !v)) return carriers[0].code;
+      if (carriers.length > 1) {
+        const d = (o) => v.distanceToSquared(new THREE.Vector3(...o.hinge));
+        return carriers.reduce((a, b) => (d(b) < d(a) ? b : a)).code;
+      }
+      const zs = zoneByCode[partCode];
+      if (!zs || !v) return null;
+      for (const z of zs) {
+        if (!inBox(v, z)) continue;
+        const key = z.surface === 'body' ? 'bodyRegion' : 'glassRegion';
+        const o = ops.find((x) => x[key] && inBox(v, x[key]));
+        return o ? o.code : null;
+      }
+      return null;
     }
 
     return {
@@ -434,10 +479,13 @@
           else { ms.material.emissive.setHex(b.c); ms.material.emissiveIntensity = b.i; }
         }
         for (const [slot, code] of [['H', hover], ['S', sel]]) {
-          const z = zoneByCode[code];
-          if (!z || code === 'body') continue;
-          const u = tint[z.surface];
-          u['u' + slot + 'Min'].value.fromArray(z.min); u['u' + slot + 'Max'].value.fromArray(z.max); u['u' + slot + 'On'].value = 1;
+          const zs = zoneByCode[code];
+          if (!zs || code === 'body') continue;
+          const [a, b = a] = zs;
+          const u = tint[a.surface];
+          u['u' + slot + 'Min'].value.fromArray(a.min); u['u' + slot + 'Max'].value.fromArray(a.max);
+          u['u' + slot + '2Min'].value.fromArray(b.min); u['u' + slot + '2Max'].value.fromArray(b.max);
+          u['u' + slot + 'On'].value = 1;
         }
       },
       setPaint(c) {

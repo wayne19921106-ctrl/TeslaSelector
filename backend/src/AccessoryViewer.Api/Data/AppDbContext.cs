@@ -17,7 +17,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<PaintColor> PaintColors => Set<PaintColor>();
     public DbSet<ModelAsset> ModelAssets => Set<ModelAsset>();
     public DbSet<Part> Parts => Set<Part>();
-    public DbSet<PartSuggestion> PartSuggestions => Set<PartSuggestion>();
+    public DbSet<AccessoryCategory> AccessoryCategories => Set<AccessoryCategory>();
+    public DbSet<AccessoryType> AccessoryTypes => Set<AccessoryType>();
+    public DbSet<PartAccessoryType> PartAccessoryTypes => Set<PartAccessoryType>();
+    public DbSet<Product> Products => Set<Product>();
+    public DbSet<PartAccessoryProduct> PartAccessoryProducts => Set<PartAccessoryProduct>();
     public DbSet<AssetPartMapping> AssetPartMappings => Set<AssetPartMapping>();
     public DbSet<AssetOpening> AssetOpenings => Set<AssetOpening>();
     public DbSet<Build> Builds => Set<Build>();
@@ -69,8 +73,34 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasMany(x => x.PartMappings).WithOne().HasForeignKey(x => x.AssetId);
             e.HasMany(x => x.Openings).WithOne().HasForeignKey(x => x.AssetId);
         });
-        b.Entity<Part>().ToTable("parts");
-        b.Entity<PartSuggestion>().ToTable("part_suggestions");
+        b.Entity<Part>(e =>
+        {
+            e.ToTable("parts");
+            e.HasMany(x => x.AccessoryTypes).WithOne().HasForeignKey(x => x.PartId);
+        });
+        b.Entity<AccessoryCategory>().ToTable("accessory_categories");
+        b.Entity<AccessoryType>(e =>
+        {
+            e.ToTable("accessory_types");
+            e.HasOne(x => x.Category).WithMany().HasForeignKey(x => x.CategoryId);
+        });
+        b.Entity<PartAccessoryType>(e =>
+        {
+            e.ToTable("part_accessory_types");
+            e.HasOne(x => x.AccessoryType).WithMany().HasForeignKey(x => x.AccessoryTypeId);
+            e.HasMany(x => x.Products).WithOne().HasForeignKey(x => x.PartAccessoryTypeId);
+        });
+        b.Entity<Product>(e =>
+        {
+            e.ToTable("products");
+            e.Ignore(x => x.DisplayName);
+        });
+        b.Entity<PartAccessoryProduct>(e =>
+        {
+            e.ToTable("part_accessory_products");
+            e.HasKey(x => new { x.PartAccessoryTypeId, x.ProductId });
+            e.HasOne(x => x.Product).WithMany().HasForeignKey(x => x.ProductId);
+        });
         b.Entity<AssetPartMapping>(e =>
         {
             e.ToTable("asset_part_mappings");
@@ -101,6 +131,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.UpdatedAt).HasDefaultValueSql("now()").ValueGeneratedOnAddOrUpdate();
             e.Property(x => x.Position).HasColumnType("jsonb");
             e.HasOne(x => x.Part).WithMany().HasForeignKey(x => x.PartId);
+            e.HasOne(x => x.AccessoryType).WithMany().HasForeignKey(x => x.AccessoryTypeId);
+            e.HasOne(x => x.Product).WithMany().HasForeignKey(x => x.ProductId);
         });
     }
 }

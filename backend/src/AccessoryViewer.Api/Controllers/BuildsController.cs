@@ -41,6 +41,8 @@ public class BuildsController(AppDbContext db) : ControllerBase
     {
         var build = await db.Builds.AsNoTracking()
             .Include(b => b.Accessories).ThenInclude(a => a.Part)
+            .Include(b => b.Accessories).ThenInclude(a => a.AccessoryType).ThenInclude(t => t!.Category)
+            .Include(b => b.Accessories).ThenInclude(a => a.Product)
             .AsSplitQuery()
             .FirstOrDefaultAsync(b => b.Id == buildId, ct);
         return build is null ? BuildNotFound() : build.ToDto();
@@ -52,6 +54,8 @@ public class BuildsController(AppDbContext db) : ControllerBase
         var build = await db.Builds
             .Include(b => b.Trim)
             .Include(b => b.Accessories).ThenInclude(a => a.Part)
+            .Include(b => b.Accessories).ThenInclude(a => a.AccessoryType).ThenInclude(t => t!.Category)
+            .Include(b => b.Accessories).ThenInclude(a => a.Product)
             .AsSplitQuery()
             .FirstOrDefaultAsync(b => b.Id == buildId, ct);
         if (build is null) return BuildNotFound();
@@ -100,13 +104,25 @@ public class BuildsController(AppDbContext db) : ControllerBase
         if (req.AssetId is int assetId && !await db.ModelAssets.AnyAsync(a => a.Id == assetId && a.IsActive, ct))
             return Invalid(nameof(req.AssetId), "找不到這個模型資源。");
 
+        var (type, product, error) = await ResolveCatalog(part.Id, req.AccessoryTypeId, req.ProductId, ct);
+        if (error is not null) return error;
+
+        var name = !string.IsNullOrWhiteSpace(req.Name) ? req.Name.Trim()
+                 : product?.DisplayName ?? type?.Name;
+        if (string.IsNullOrWhiteSpace(name))
+            return Invalid(nameof(req.Name), "請選擇配件，或輸入自訂的配件名稱。");
+
         var acc = new BuildAccessory
         {
             BuildId = buildId,
             PartId = part.Id,
             Part = part,
             AssetId = req.AssetId,
-            Name = req.Name.Trim(),
+            AccessoryTypeId = type?.Id,
+            AccessoryType = type,
+            ProductId = product?.Id,
+            Product = product,
+            Name = name.Length > 40 ? name[..40] : name,
             Status = status,
             PriceTwd = req.PriceTwd,
             Note = string.IsNullOrWhiteSpace(req.Note) ? null : req.Note.Trim(),
@@ -124,7 +140,10 @@ public class BuildsController(AppDbContext db) : ControllerBase
     public async Task<ActionResult<AccessoryDto>> UpdateAccessory(
         Guid buildId, Guid accessoryId, UpdateAccessoryRequest req, CancellationToken ct)
     {
-        var acc = await db.BuildAccessories.Include(a => a.Part)
+        var acc = await db.BuildAccessories
+            .Include(a => a.Part)
+            .Include(a => a.AccessoryType).ThenInclude(t => t!.Category)
+            .Include(a => a.Product)
             .FirstOrDefaultAsync(a => a.Id == accessoryId && a.BuildId == buildId, ct);
         if (acc is null) return Problem(statusCode: StatusCodes.Status404NotFound, title: "找不到這個配件。");
 
@@ -134,6 +153,20 @@ public class BuildsController(AppDbContext db) : ControllerBase
             if (part is null) return Invalid(nameof(req.PartCode), "找不到這個部位。");
             acc.PartId = part.Id;
             acc.Part = part;
+        }
+        var clear = req.Clear ?? [];
+        if (req.AccessoryTypeId is not null || req.ProductId is not null || req.PartCode is not null
+            || clear.Contains("accessoryType") || clear.Contains("product"))
+        {
+            var typeId = clear.Contains("accessoryType") ? null : req.AccessoryTypeId ?? acc.AccessoryTypeId;
+            var productId = clear.Contains("product") || clear.Contains("accessoryType") ? null
+                          : req.ProductId ?? (req.AccessoryTypeId is null ? acc.ProductId : null);
+            var (type, product, error) = await ResolveCatalog(acc.PartId, typeId, productId, ct);
+            if (error is not null) return error;
+            acc.AccessoryTypeId = type?.Id; acc.AccessoryType = type;
+            acc.ProductId = product?.Id; acc.Product = product;
+            if (req.Name is null && (req.AccessoryTypeId is not null || req.ProductId is not null))
+                acc.Name = product?.DisplayName ?? type?.Name ?? acc.Name;
         }
         if (req.Name is not null) acc.Name = req.Name.Trim();
         if (req.Status is not null)
@@ -147,14 +180,15 @@ public class BuildsController(AppDbContext db) : ControllerBase
         if (req.Position is not null) acc.Position = req.Position.ToJson();
         if (req.AssetId is not null) acc.AssetId = req.AssetId;
 
-        foreach (var field in req.Clear ?? [])
+        foreach (var field in clear)
         {
             switch (field)
             {
+                case "accessoryType": case "product": break;   // 上面已處理
                 case "priceTwd": acc.PriceTwd = null; break;
                 case "note": acc.Note = null; break;
                 case "position": acc.Position = null; break;
-                default: return Invalid(nameof(req.Clear), $"無法清除欄位「{field}」，只能清除 priceTwd、note、position。");
+                default: return Invalid(nameof(req.Clear), $"無法清除欄位「{field}」，只能清除 accessoryType、product、priceTwd、note、position。");
             }
         }
 
@@ -176,6 +210,34 @@ public class BuildsController(AppDbContext db) : ControllerBase
     }
 
     // ---- helpers ---------------------------------------------------------------
+
+    /// <summary>
+    /// 檢查配件是否為這個車項可裝的配件、產品是否為「車項 × 配件」的適用產品。
+    /// 指定產品時必須同時指定配件。
+    /// </summary>
+    private async Task<(AccessoryType? Type, Product? Product, ActionResult? Error)> ResolveCatalog(
+        int partId, int? accessoryTypeId, int? productId, CancellationToken ct)
+    {
+        if (productId is not null && accessoryTypeId is null)
+            return (null, null, Invalid("productId", "選擇產品時也要指定配件。"));
+        if (accessoryTypeId is null) return (null, null, null);
+
+        var link = await db.PartAccessoryTypes
+            .Include(pa => pa.AccessoryType).ThenInclude(t => t.Category)
+            .FirstOrDefaultAsync(pa => pa.PartId == partId && pa.AccessoryTypeId == accessoryTypeId
+                                       && pa.AccessoryType.IsActive, ct);
+        if (link is null)
+            return (null, null, Invalid("accessoryTypeId", "這個車項沒有這項配件。"));
+        if (productId is null) return (link.AccessoryType, null, null);
+
+        var product = await db.PartAccessoryProducts
+            .Where(pp => pp.PartAccessoryTypeId == link.Id && pp.ProductId == productId && pp.Product.IsActive)
+            .Select(pp => pp.Product)
+            .FirstOrDefaultAsync(ct);
+        return product is null
+            ? (null, null, Invalid("productId", "這個產品不適用於所選的車項與配件。"))
+            : (link.AccessoryType, product, null);
+    }
 
     private Task<Trim?> ActiveTrim(int trimId, CancellationToken ct) =>
         db.Trims.AsNoTracking().FirstOrDefaultAsync(t => t.Id == trimId && t.IsActive, ct);

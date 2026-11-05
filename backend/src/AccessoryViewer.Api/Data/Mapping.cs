@@ -67,8 +67,17 @@ public static class Mapping
         return new RegionDto(z.Min ?? [], z.Max ?? []);
     }
 
+    public static AccessoryCategoryDto? ToDto(this AccessoryCategory? c) =>
+        c is null ? null : new AccessoryCategoryDto(c.Code, c.Name);
+
+    public static ProductDto ToDto(this Product p) =>
+        new(p.Id, p.Brand, p.Name, p.DisplayName, p.PriceTwd, p.Url);
+
     public static AccessoryDto ToDto(this BuildAccessory a) => new(
-        a.Id, a.Part.Code, a.Part.Name, a.AssetId, a.Name, a.Status, a.PriceTwd, a.Note,
+        a.Id, a.Part.Code, a.Part.Name, a.AssetId,
+        a.AccessoryTypeId, a.AccessoryType?.Name, a.AccessoryType?.Category.ToDto(),
+        a.ProductId, a.Product?.DisplayName,
+        a.Name, a.Status, a.PriceTwd, a.Note,
         a.Position is null ? null : ToPositionDto(a.Position), a.IsExample, a.CreatedAt, a.UpdatedAt);
 
     public static BuildDto ToDto(this Build b) => new(

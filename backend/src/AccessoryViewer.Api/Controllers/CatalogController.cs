@@ -108,20 +108,38 @@ public class CatalogController(AppDbContext db) : ControllerBase
             a.Openings.OrderBy(o => o.SortOrder).Select(o => o.ToDto()).ToList());
     }
 
-    /// <summary>部位目錄與各部位的建議配件。</summary>
+    /// <summary>車項目錄：每個車項可裝的配件，以及各配件的適用產品。</summary>
     [HttpGet("parts")]
     public async Task<ActionResult<IReadOnlyList<PartDto>>> GetParts(CancellationToken ct)
     {
-        var parts = await db.Parts.AsNoTracking().OrderBy(p => p.SortOrder).ToListAsync(ct);
-        var suggestions = await db.PartSuggestions.AsNoTracking()
-            .OrderBy(s => s.PartKind).ThenBy(s => s.SortOrder)
+        var parts = await db.Parts.AsNoTracking()
+            .Include(p => p.AccessoryTypes).ThenInclude(pa => pa.AccessoryType).ThenInclude(t => t.Category)
+            .Include(p => p.AccessoryTypes).ThenInclude(pa => pa.Products).ThenInclude(pp => pp.Product)
+            .AsSplitQuery()
+            .OrderBy(p => p.SortOrder)
             .ToListAsync(ct);
-        var byKind = suggestions.GroupBy(s => s.PartKind)
-            .ToDictionary(g => g.Key, g => (IReadOnlyList<string>)g.Select(s => s.Name).ToList());
 
-        return parts
-            .Select(p => new PartDto(p.Code, p.Name, p.Category, p.Kind,
-                byKind.TryGetValue(p.Kind, out var list) ? list : []))
+        return parts.Select(p => new PartDto(
+                p.Code, p.Name, p.Category,
+                p.AccessoryTypes
+                    .Where(pa => pa.AccessoryType.IsActive)
+                    .OrderBy(pa => pa.SortOrder).ThenBy(pa => pa.AccessoryType.SortOrder)
+                    .Select(pa => new PartAccessoryDto(
+                        pa.AccessoryType.Id, pa.AccessoryType.Name, pa.AccessoryType.Category.ToDto(),
+                        pa.Products
+                            .Where(pp => pp.Product.IsActive)
+                            .OrderBy(pp => pp.SortOrder).ThenBy(pp => pp.Product.SortOrder)
+                            .Select(pp => pp.Product.ToDto())
+                            .ToList()))
+                    .ToList()))
             .ToList();
     }
+
+    /// <summary>配件分類：外觀、內裝、安全、操控。</summary>
+    [HttpGet("accessory-categories")]
+    public async Task<ActionResult<IReadOnlyList<AccessoryCategoryDto>>> GetAccessoryCategories(CancellationToken ct) =>
+        await db.AccessoryCategories.AsNoTracking()
+            .OrderBy(c => c.SortOrder)
+            .Select(c => new AccessoryCategoryDto(c.Code, c.Name))
+            .ToListAsync(ct);
 }

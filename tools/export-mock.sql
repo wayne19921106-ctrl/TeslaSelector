@@ -81,13 +81,31 @@ asset_detail as (
   from model_assets a where a.is_active
 ),
 parts_json as (
-  select jsonb_agg(jsonb_build_object('code', p.code, 'name', p.name, 'category', p.category, 'kind', p.kind,
-    'suggestions', coalesce((select jsonb_agg(s.name order by s.sort_order) from part_suggestions s where s.part_kind = p.kind), '[]'::jsonb))
+  select jsonb_agg(jsonb_build_object('code', p.code, 'name', p.name, 'category', p.category,
+    'accessoryTypes', coalesce((
+      select jsonb_agg(jsonb_build_object(
+          'id', t.id, 'name', t.name,
+          'category', case when c.id is null then null else jsonb_build_object('code', c.code, 'name', c.name) end,
+          'products', coalesce((
+            select jsonb_agg(jsonb_build_object('id', pr.id, 'brand', pr.brand, 'name', pr.name,
+                     'displayName', pr.brand || ' ' || pr.name, 'priceTwd', pr.price_twd, 'url', pr.url)
+                     order by pap.sort_order, pr.sort_order)
+            from part_accessory_products pap join products pr on pr.id = pap.product_id and pr.is_active
+            where pap.part_accessory_type_id = pat.id), '[]'::jsonb))
+        order by pat.sort_order, t.sort_order)
+      from part_accessory_types pat
+      join accessory_types t on t.id = pat.accessory_type_id and t.is_active
+      left join accessory_categories c on c.id = t.category_id
+      where pat.part_id = p.id), '[]'::jsonb))
     order by p.sort_order) as j
   from parts p
+),
+categories_json as (
+  select jsonb_agg(jsonb_build_object('code', code, 'name', name) order by sort_order) as j from accessory_categories
 )
 select jsonb_pretty(jsonb_build_object(
   'catalog', (select j from catalog),
   'trims', (select j from trim_detail),
   'assets', (select j from asset_detail),
-  'parts', (select j from parts_json)));
+  'parts', (select j from parts_json),
+  'accessoryCategories', (select j from categories_json)));

@@ -12,8 +12,10 @@ public sealed record BuildDto(
     DateTime CreatedAt, DateTime UpdatedAt, IReadOnlyList<AccessoryDto> Accessories);
 
 public sealed record AccessoryDto(
-    Guid Id, string PartCode, string PartName, int? AssetId, string Name, string Status,
-    int? PriceTwd, string? Note, PositionDto? Position, bool IsExample,
+    Guid Id, string PartCode, string PartName, int? AssetId,
+    int? AccessoryTypeId, string? AccessoryTypeName, AccessoryCategoryDto? Category,
+    int? ProductId, string? ProductName,
+    string Name, string Status, int? PriceTwd, string? Note, PositionDto? Position, bool IsExample,
     DateTime CreatedAt, DateTime UpdatedAt);
 
 /// <summary>參考座標系中的點（p）與法向量（n）。</summary>
@@ -48,7 +50,12 @@ public sealed class UpdateBuildRequest
 public sealed class CreateAccessoryRequest
 {
     [Required, StringLength(40)] public string PartCode { get; init; } = "";
-    [Required, StringLength(40, MinimumLength = 1)] public string Name { get; init; } = "";
+    /// <summary>配件（車項可裝的配件之一）。</summary>
+    public int? AccessoryTypeId { get; init; }
+    /// <summary>產品（需同時指定配件，且為該車項 × 配件的適用產品）。</summary>
+    public int? ProductId { get; init; }
+    /// <summary>自訂名稱；未填時依序帶入產品名稱、配件名稱。</summary>
+    [StringLength(40, MinimumLength = 1)] public string? Name { get; init; }
     public int? AssetId { get; init; }
     public string? Status { get; init; }
     [Range(0, int.MaxValue)] public int? PriceTwd { get; init; }
@@ -60,6 +67,8 @@ public sealed class CreateAccessoryRequest
 public sealed class UpdateAccessoryRequest
 {
     [StringLength(40)] public string? PartCode { get; init; }
+    public int? AccessoryTypeId { get; init; }
+    public int? ProductId { get; init; }
     [StringLength(40, MinimumLength = 1)] public string? Name { get; init; }
     public string? Status { get; init; }
     [Range(0, int.MaxValue)] public int? PriceTwd { get; init; }
@@ -67,6 +76,6 @@ public sealed class UpdateAccessoryRequest
     public PositionDto? Position { get; init; }
     public int? AssetId { get; init; }
 
-    /// <summary>要清除的欄位：priceTwd、note、position。</summary>
+    /// <summary>要清除的欄位：accessoryType、product、priceTwd、note、position。</summary>
     public string[]? Clear { get; init; }
 }

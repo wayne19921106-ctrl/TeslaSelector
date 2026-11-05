@@ -124,21 +124,74 @@ public class ModelAsset
     public List<AssetOpening> Openings { get; set; } = [];
 }
 
+/// <summary>車項，例如前擋玻璃、前左車門。</summary>
 public class Part
 {
     public int Id { get; set; }
     public string Code { get; set; } = "";
     public string Name { get; set; } = "";
+    /// <summary>介面分組，例如外觀鈑件、車內。</summary>
     public string Category { get; set; } = "";
-    public string Kind { get; set; } = "";
+    public int SortOrder { get; set; }
+    public List<PartAccessoryType> AccessoryTypes { get; set; } = [];
+}
+
+/// <summary>配件分類：外觀、內裝、安全、操控。</summary>
+public class AccessoryCategory
+{
+    public short Id { get; set; }
+    public string Code { get; set; } = "";
+    public string Name { get; set; } = "";
     public int SortOrder { get; set; }
 }
 
-public class PartSuggestion
+/// <summary>配件，例如隔熱紙、玻璃鍍膜。</summary>
+public class AccessoryType
 {
     public int Id { get; set; }
-    public string PartKind { get; set; } = "";
     public string Name { get; set; } = "";
+    public short? CategoryId { get; set; }
+    public AccessoryCategory? Category { get; set; }
+    public int SortOrder { get; set; }
+    public bool IsActive { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+}
+
+/// <summary>車項可裝的配件（車項 × 配件）。</summary>
+public class PartAccessoryType
+{
+    public int Id { get; set; }
+    public int PartId { get; set; }
+    public int AccessoryTypeId { get; set; }
+    public AccessoryType AccessoryType { get; set; } = null!;
+    public int SortOrder { get; set; }
+    public List<PartAccessoryProduct> Products { get; set; } = [];
+}
+
+/// <summary>產品，例如舒熱佳 LX。</summary>
+public class Product
+{
+    public int Id { get; set; }
+    public string Brand { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string? Description { get; set; }
+    public int? PriceTwd { get; set; }
+    public string? Url { get; set; }
+    public int SortOrder { get; set; }
+    public bool IsActive { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+
+    public string DisplayName => $"{Brand} {Name}";
+}
+
+/// <summary>某車項的某配件可選的產品。</summary>
+public class PartAccessoryProduct
+{
+    public int PartAccessoryTypeId { get; set; }
+    public int ProductId { get; set; }
+    public Product Product { get; set; } = null!;
     public int SortOrder { get; set; }
 }
 
@@ -189,6 +242,11 @@ public class BuildAccessory
     public int PartId { get; set; }
     public Part Part { get; set; } = null!;
     public int? AssetId { get; set; }
+    public int? AccessoryTypeId { get; set; }
+    public AccessoryType? AccessoryType { get; set; }
+    public int? ProductId { get; set; }
+    public Product? Product { get; set; }
+    /// <summary>顯示名稱：自訂名稱，或由產品／配件名稱帶入。</summary>
     public string Name { get; set; } = "";
     public string Status { get; set; } = "considering";
     public int? PriceTwd { get; set; }

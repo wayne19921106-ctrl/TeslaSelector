@@ -52,5 +52,13 @@ public sealed record OpeningDto(
     string Code, string Name, double[] Hinge, string Axis, decimal OpenAngleDeg,
     RegionDto? BodyRegion, RegionDto? GlassRegion, IReadOnlyList<string> MeshKeys);
 
-// ---- /parts -------------------------------------------------------------------
-public sealed record PartDto(string Code, string Name, string Category, string Kind, IReadOnlyList<string> Suggestions);
+// ---- /parts、/accessory-categories ---------------------------------------------
+/// <summary>車項與其可裝配件、各配件的適用產品。</summary>
+public sealed record PartDto(string Code, string Name, string Category, IReadOnlyList<PartAccessoryDto> AccessoryTypes);
+
+/// <summary>車項可裝的配件；Category 在分類尚未對應前為 null。</summary>
+public sealed record PartAccessoryDto(int Id, string Name, AccessoryCategoryDto? Category, IReadOnlyList<ProductDto> Products);
+
+public sealed record AccessoryCategoryDto(string Code, string Name);
+
+public sealed record ProductDto(int Id, string Brand, string Name, string DisplayName, int? PriceTwd, string? Url);

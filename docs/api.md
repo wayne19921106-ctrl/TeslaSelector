@@ -12,7 +12,8 @@
 | GET | `/catalog?market=TW` | 品牌 → 車系 → 世代 → 版本 目錄，用於版本下拉選單 |
 | GET | `/trims/{trimId}` | 版本完整規格、輪胎、可選車漆、可用模型資源 |
 | GET | `/assets/{assetId}` | 模型資源：產生器參數、部位對應、可開啟件 |
-| GET | `/parts` | 部位目錄與建議配件 |
+| GET | `/parts` | 車項目錄，含可裝配件與適用產品 |
+| GET | `/accessory-categories` | 配件分類（外觀、內裝、安全、操控） |
 | POST | `/builds` | 建立配置清單 |
 | GET | `/builds/{buildId}` | 取得配置清單與其配件 |
 | PATCH | `/builds/{buildId}` | 修改名稱、版本或車漆 |
@@ -105,11 +106,32 @@ Query：`market`（選填，預設 `TW`）。只回傳 `is_active` 的版本。
 
 ## GET /parts
 
+車項 → 配件 → 產品 三層目錄。`category` 是車項在介面上的分組（外觀鈑件、車內…），配件的 `category` 是配件分類（外觀、內裝、安全、操控），尚未對應時為 null。
+
 ```json
 [
-  { "code": "fdoor-L", "name": "左前車門", "category": "車身鈑件", "kind": "door",
-    "suggestions": ["門檻防踢墊", "車門防撞條", "電吸門"] }
+  {
+    "code": "windshield", "name": "前擋玻璃", "category": "玻璃與車頂",
+    "accessoryTypes": [
+      { "id": 1, "name": "隔熱紙", "category": null,
+        "products": [
+          { "id": 1, "brand": "舒熱佳", "name": "LX", "displayName": "舒熱佳 LX", "priceTwd": null, "url": null },
+          { "id": 2, "brand": "舒熱佳", "name": "XE", "displayName": "舒熱佳 XE", "priceTwd": null, "url": null }
+        ] },
+      { "id": 2, "name": "玻璃鍍膜", "category": null,
+        "products": [ { "id": 3, "brand": "K-WAX", "name": "GC-300 氟素玻璃鍍膜", "displayName": "K-WAX GC-300 氟素玻璃鍍膜", "priceTwd": null, "url": null } ] }
+    ]
+  }
 ]
+```
+
+- 車項是否能在 3D 模型上點選，由模型資源的 `partMappings` 決定；沒有對應的車項（例如底盤、門檻、車頂）只能從清單選擇。
+
+## GET /accessory-categories
+
+```json
+[ { "code": "exterior", "name": "外觀" }, { "code": "interior", "name": "內裝" },
+  { "code": "safety", "name": "安全" }, { "code": "handling", "name": "操控" } ]
 ```
 
 ## 配置清單（builds）
@@ -128,15 +150,19 @@ Query：`market`（選填，預設 `TW`）。只回傳 `is_active` 的版本。
 
 ```json
 {
-  "id": "a2b3…", "partCode": "front-bumper", "partName": "前保桿", "assetId": 1,
-  "name": "全車犀牛皮 PPF", "status": "considering", "priceTwd": 68000, "note": null,
-  "position": { "p": [2.46, 0.48, 0.3], "n": [1, 0, 0] },
+  "id": "a2b3…", "partCode": "windshield", "partName": "前擋玻璃", "assetId": 1,
+  "accessoryTypeId": 1, "accessoryTypeName": "隔熱紙", "category": null,
+  "productId": 1, "productName": "舒熱佳 LX",
+  "name": "舒熱佳 LX", "status": "considering", "priceTwd": 12000, "note": null,
+  "position": { "p": [0.82, 1.21, 0.2], "n": [0.55, 0.83, 0] },
   "isExample": false, "createdAt": "…", "updatedAt": "…"
 }
 ```
 
 - `status`：`considering`（評估中）／`planned`（準備購買）／`purchased`（已購買）／`installed`（已安裝）
-- `position`：參考座標系中的點與法向量，可為 null（只記錄部位、不標在模型上）
+- `position`：參考座標系中的點與法向量，可為 null（只記錄車項、不標在模型上）
+- `name`：顯示名稱。選了產品時預設為產品名稱，只選配件時為配件名稱，也可以自訂。
+- `category`：配件分類 `{ code, name }`，配件尚未對應分類或沒有選配件時為 null。
 
 ### POST /builds
 
@@ -153,16 +179,19 @@ Query：`market`（選填，預設 `TW`）。只回傳 `is_active` 的版本。
 
 ```json
 {
-  "partCode": "front-bumper", "name": "全車犀牛皮 PPF", "assetId": 1,
-  "status": "considering", "priceTwd": 68000, "note": "XPEL Ultimate Plus",
-  "position": { "p": [2.46, 0.48, 0.3], "n": [1, 0, 0] }, "isExample": false
+  "partCode": "windshield", "accessoryTypeId": 1, "productId": 1, "assetId": 1,
+  "status": "considering", "priceTwd": 12000, "note": "含施工",
+  "position": { "p": [0.82, 1.21, 0.2], "n": [0.55, 0.83, 0] }, "isExample": false
 }
 ```
-必填：`partCode`、`name`（1–40 字）。`priceTwd` ≥ 0，`note` ≤ 500 字，`position.p`／`position.n` 必須是 3 個有限數值。回傳 201 與 AccessoryDto。
+- 必填：`partCode`。另外至少要有 `accessoryTypeId` 或 `name` 其中之一。
+- `accessoryTypeId` 必須是這個車項可裝的配件；`productId` 必須同時指定配件，且是該「車項 × 配件」的適用產品，否則回 400。
+- `name` 選填（1–40 字），未填時帶入產品或配件名稱；目錄裡沒有的配件就只填 `name`。
+- `priceTwd` ≥ 0，`note` ≤ 500 字，`position.p`／`position.n` 必須是 3 個有限數值。回傳 201 與 AccessoryDto。
 
 ### PATCH /builds/{buildId}/accessories/{accessoryId}
 
-任一欄位選填：`partCode`、`name`、`status`、`priceTwd`、`note`、`position`。要清除 `priceTwd`、`note` 或 `position`，傳 `"clear": ["priceTwd", "note", "position"]`。
+任一欄位選填：`partCode`、`accessoryTypeId`、`productId`、`name`、`status`、`priceTwd`、`note`、`position`。換配件時會清掉原本的產品；改配件或產品且沒有同時傳 `name` 時，名稱會跟著更新。要清除欄位，傳 `"clear": ["accessoryType", "product", "priceTwd", "note", "position"]` 中的任意幾項（清除配件會一併清除產品）。
 
 ## 狀態碼
 

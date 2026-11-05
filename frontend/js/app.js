@@ -9,7 +9,7 @@
   const S = {
     client: null, catalog: null, generation: null, parts: {}, trims: [],
     trimCache: {}, assetCache: {}, build: null, trim: null, asset: null, car: null,
-    sel: null, hover: null, pending: null, busy: false
+    sel: null, selType: null, hover: null, pending: null, busy: false, placeable: new Set()
   };
 
   /* ---------- Scene ---------- */
@@ -75,6 +75,7 @@
     for (const [code, open] of Object.entries(openState)) S.car.setOpen(code, open, true);
     S.car.step(0);
     S.trim = trim; S.asset = asset;
+    S.placeable = new Set(asset.partMappings.map((m) => m.partCode));   // 模型上點得到的車項
     controls.target.y = (trim.specs.heightMm / 1000) * 0.45;
     applyPaint();
     renderTrim(); renderOpenings(); renderSwatches();
@@ -199,8 +200,11 @@
   function itemRow(a) {
     const i = S.build.accessories.indexOf(a);
     const row = document.createElement('div'); row.className = 'item'; row.tabIndex = 0;
+    const meta = [a.accessoryTypeName && a.accessoryTypeName !== a.name ? a.accessoryTypeName : '', a.category ? a.category.name : '']
+      .filter(Boolean).join(' · ');
     row.innerHTML = `<span class="num${a.position ? '' : ' off'}">${i + 1}</span>` +
-      `<span class="t">${esc(a.name)}${a.isExample ? '<span class="ex">範例</span>' : ''}</span>`;
+      `<span class="t">${esc(a.name)}${a.isExample ? '<span class="ex">範例</span>' : ''}` +
+      `${meta ? `<span class="meta">${esc(meta)}</span>` : ''}</span>`;
     const st = document.createElement('select'); st.className = 'status'; st.setAttribute('aria-label', a.name + ' 的狀態');
     st.innerHTML = Object.entries(STATUS).map(([k, v]) => `<option value="${k}"${k === a.status ? ' selected' : ''}>${v}</option>`).join('');
     st.dataset.s = a.status;
@@ -227,22 +231,60 @@
 
   function renderSel() {
     const c = $('#selCard'); c.textContent = ''; c.classList.toggle('active', !!S.sel);
+    $('#partSel').value = S.sel || '';
     if (!S.sel) {
-      c.innerHTML = '<p class="empty">點擊車上任一部位，例如輪框、前保桿或天窗，就能在點擊的位置標註配件。打開車門或前後廂後，也能標註座椅、螢幕、後車廂等車內位置。</p>';
+      c.innerHTML = '<p class="empty">點擊車上任一部位，或從上方清單選擇車項。打開車門或前後廂後，也能點選座椅、螢幕、行李箱等車內位置。</p>';
       return null;
     }
-    const p = S.parts[S.sel] || { name: S.sel, category: '', suggestions: [] };
+    const p = S.parts[S.sel] || { name: S.sel, category: '', accessoryTypes: [] };
+    const types = p.accessoryTypes || [];
+    if (S.selType && !types.some((t) => t.id === S.selType)) S.selType = null;
     const head = document.createElement('div');
-    head.innerHTML = `<div class="cat">${esc(p.category)}</div><p class="partname">${esc(p.name)}</p>`;
-    const form = document.createElement('form'); form.className = 'add';
-    form.innerHTML = '<input id="accName" type="text" maxlength="40" autocomplete="off" placeholder="輸入配件名稱" aria-label="配件名稱"><button class="btn" type="submit">新增</button>';
-    form.addEventListener('submit', (e) => { e.preventDefault(); addAcc(form.querySelector('input').value); });
-    const chips = document.createElement('div'); chips.className = 'chips';
-    for (const sug of p.suggestions || []) {
-      const b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.textContent = '+ ' + sug;
-      b.addEventListener('click', () => addAcc(sug)); chips.appendChild(b);
+    head.innerHTML = `<div class="cat">${esc(p.category)}</div><p class="partname">${esc(p.name)}</p>` +
+      (S.placeable.has(S.sel) ? '' : '<p class="nopos">這個車項在模型上沒有位置，配件只會列在清單中。</p>');
+    c.appendChild(head);
+
+    if (types.length) {
+      const step = document.createElement('div'); step.className = 'step';
+      step.innerHTML = '<div class="label">配件</div>';
+      const chips = document.createElement('div'); chips.className = 'chips';
+      for (const t of types) {
+        const b = document.createElement('button'); b.type = 'button'; b.className = 'chip pick';
+        b.setAttribute('aria-pressed', t.id === S.selType);
+        b.innerHTML = esc(t.name) + (t.category ? `<small>${esc(t.category.name)}</small>` : '');
+        b.addEventListener('click', () => { S.selType = S.selType === t.id ? null : t.id; renderSel(); });
+        chips.appendChild(b);
+      }
+      step.appendChild(chips);
+      c.appendChild(step);
+
+      const t = types.find((x) => x.id === S.selType);
+      if (t) {
+        const step2 = document.createElement('div'); step2.className = 'step';
+        step2.innerHTML = `<div class="label">${esc(t.name)}的產品</div>`;
+        const list = document.createElement('div'); list.className = 'prods';
+        for (const pr of t.products) {
+          const b = document.createElement('button'); b.type = 'button'; b.className = 'prod';
+          b.innerHTML = `<span>${esc(pr.displayName)}</span>` +
+            (pr.priceTwd != null ? `<small>NT$ ${Number(pr.priceTwd).toLocaleString('en-US')}</small>` : '') + '<b>新增</b>';
+          b.addEventListener('click', () => addAcc({ accessoryTypeId: t.id, productId: pr.id }));
+          list.appendChild(b);
+        }
+        const only = document.createElement('button'); only.type = 'button'; only.className = 'prod ghost';
+        only.innerHTML = `<span>先加「${esc(t.name)}」，之後再選產品</span><b>新增</b>`;
+        only.addEventListener('click', () => addAcc({ accessoryTypeId: t.id }));
+        list.appendChild(only);
+        step2.appendChild(list);
+        c.appendChild(step2);
+      }
     }
-    c.append(head, form, chips);
+
+    const form = document.createElement('form'); form.className = 'add';
+    form.innerHTML = '<input id="accName" type="text" maxlength="40" autocomplete="off" placeholder="' +
+      (types.length ? '清單裡沒有？輸入自訂配件名稱' : '輸入配件名稱') + '" aria-label="自訂配件名稱"><button class="btn" type="submit">新增</button>';
+    form.addEventListener('submit', (e) => { e.preventDefault(); const v = form.querySelector('input').value.trim(); if (v) addAcc({ name: v }); });
+    c.appendChild(form);
+
     const mine = S.build.accessories.filter((a) => a.partCode === S.sel);
     if (mine.length) { const l = document.createElement('div'); mine.forEach((a) => l.appendChild(itemRow(a))); c.appendChild(l); }
     return form.querySelector('input');
@@ -255,7 +297,7 @@
     const list = $('#allList'); list.textContent = '';
     const acc = S.build ? S.build.accessories : [];
     $('#total').textContent = acc.length;
-    if (!acc.length) list.innerHTML = '<p class="empty">還沒有配件。點擊車身部位開始標註。</p>';
+    if (!acc.length) list.innerHTML = '<p class="empty">還沒有配件。點擊車身部位或選擇車項開始標註。</p>';
     const groups = {};
     acc.forEach((a) => (groups[a.partCode] = groups[a.partCode] || []).push(a));
     for (const code of Object.keys(groups)) {
@@ -268,21 +310,24 @@
     return input;
   }
 
-  async function addAcc(name) {
-    name = (name || '').trim();
-    if (!name || !S.sel || S.busy) return;
-    let pos = S.pending;
-    if (!pos) { const last = S.build.accessories.filter((a) => a.partCode === S.sel && a.position).pop(); pos = last ? last.position : null; }
+  /** 新增配件：{ accessoryTypeId?, productId?, name? }，位置用點擊處或同車項上一筆的位置。 */
+  async function addAcc(choice) {
+    if (!S.sel || S.busy) return;
+    let pos = S.placeable.has(S.sel) ? S.pending : null;
+    if (!pos && S.placeable.has(S.sel)) {
+      const last = S.build.accessories.filter((a) => a.partCode === S.sel && a.position).pop(); pos = last ? last.position : null;
+    }
     await run(async () => {
-      const a = await S.client.addAccessory(S.build.id, { partCode: S.sel, name, assetId: S.asset.id, position: pos });
+      const a = await S.client.addAccessory(S.build.id, { partCode: S.sel, assetId: S.asset.id, position: pos, ...choice });
       S.build.accessories.push(a);
       const input = renderAll();
       toast(`已在「${partName(a.partCode)}」新增「${a.name}」`);
-      if (input && matchMedia('(pointer:fine)').matches) input.focus();
+      if (choice.name && input && matchMedia('(pointer:fine)').matches) input.focus();
     });
   }
 
   function select(code, pos) {
+    if (code !== S.sel) S.selType = null;
     S.sel = code; S.pending = pos;
     const input = renderAll();
     if (input && matchMedia('(pointer:fine)').matches) input.focus({ preventScroll: true });
@@ -367,11 +412,17 @@
   }));
   $('#openAll').addEventListener('click', () => { S.car.openings.forEach((o) => S.car.setOpen(o.code, true, REDUCE)); renderOpenings(); });
   $('#closeAll').addEventListener('click', () => { S.car.openings.forEach((o) => S.car.setOpen(o.code, false, REDUCE)); renderOpenings(); });
+  $('#partSel').addEventListener('change', (e) => {
+    const code = e.target.value;
+    if (!code) { S.sel = null; S.pending = null; renderAll(); return; }
+    select(code, null);
+  });
   $('#copyBtn').addEventListener('click', () => {
     const acc = S.build.accessories;
     const head = `${S.trim.generation.modelName} ${S.trim.name}（${S.trim.modelYear}）`;
-    const tsv = [head, '編號\t部位\t配件名稱\t狀態']
-      .concat(acc.map((a, i) => `${i + 1}\t${partName(a.partCode)}\t${a.name}\t${STATUS[a.status] || a.status}`)).join('\n');
+    const tsv = [head, '編號\t車項\t配件\t產品\t分類\t狀態']
+      .concat(acc.map((a, i) => [i + 1, partName(a.partCode), a.accessoryTypeName || a.name, a.productName || '',
+        a.category ? a.category.name : '', STATUS[a.status] || a.status].join('\t'))).join('\n');
     const buf = $('#copyBuf');
     const fallback = () => { buf.value = tsv; buf.hidden = false; buf.focus(); buf.select(); toast('已選取清單，請按 Ctrl＋C 或長按複製'); };
     try { navigator.clipboard.writeText(tsv).then(() => { buf.hidden = true; toast('已複製，可直接貼到 Google Sheets'); }, fallback); }
@@ -393,18 +444,27 @@
   }
 
   async function seedExamples() {
+    // 從目錄挑配件與產品（找不到就改用自訂名稱）
+    const pick = (partCode, typeName, productName, fallback) => {
+      const t = ((S.parts[partCode] || {}).accessoryTypes || []).find((x) => x.name === typeName);
+      const pr = t && t.products.find((x) => x.name === productName);
+      return t ? { accessoryTypeId: t.id, productId: pr ? pr.id : undefined } : { name: fallback };
+    };
     const ex = [
-      ['全車犀牛皮 PPF', [5, 0.5, 0.3], [-1, 0, 0]],
-      ['天窗遮陽簾', [-0.4, 5, 0.1], [0, -1, 0]],
-      ['輪框保護圈', [1.6, 0.5, -5], [0, 0, 1]],
-      ['碳纖維尾翼', [-5, 0.9, 0], [1, 0, 0]]
+      ['windshield', pick('windshield', '隔熱紙', 'LX', '前擋隔熱紙'), [3, 1.6, 0.2], [-2.3, -0.4, 0]],
+      ['front-bumper', { name: '全車犀牛皮 PPF' }, [5, 0.5, 0.3], [-1, 0, 0]],
+      ['roof', { name: '天窗遮陽簾' }, [-0.4, 5, 0.1], [0, -1, 0]],
+      // 輪框外圈的高度依輪胎尺寸計算
+      ['rim', { name: '輪框保護圈' }, [S.trim.specs.wheelbaseMm / 2000,
+        S.trim.tires[0].overallDiameterMm / 2000 + S.trim.tires[0].rimDiameterIn * 0.0127 - 0.01, -5], [0, 0, 1]],
+      ['tailgate', { name: '碳纖維尾翼' }, [-5, 0.9, 0], [1, 0, 0]]
     ];
     S.car.group.updateMatrixWorld(true);
-    for (const [name, o, d] of ex) {
+    for (const [expect, choice, o, d] of ex) {
       rc.set(new THREE.Vector3(...o), new THREE.Vector3(...d).normalize());
       const h = S.car.raycast(rc);
-      if (!h) continue;
-      const a = await S.client.addAccessory(S.build.id, { partCode: h.partCode, name, assetId: S.asset.id, position: { p: h.p, n: h.n }, isExample: true });
+      if (!h || h.partCode !== expect) continue;
+      const a = await S.client.addAccessory(S.build.id, { partCode: h.partCode, ...choice, assetId: S.asset.id, position: { p: h.p, n: h.n }, isExample: true });
       S.build.accessories.push(a);
     }
   }
@@ -446,6 +506,15 @@
     const [catalog, parts] = await Promise.all([S.client.catalog(), S.client.parts()]);
     S.catalog = catalog;
     parts.forEach((p) => (S.parts[p.code] = p));
+    // 車項下拉：依分組列出
+    const groups = [];
+    for (const p of parts) {
+      let g = groups.find((x) => x.name === p.category);
+      if (!g) groups.push((g = { name: p.category, items: [] }));
+      g.items.push(p);
+    }
+    $('#partSel').innerHTML = '<option value="">選擇車項…</option>' + groups.map((g) =>
+      `<optgroup label="${esc(g.name)}">${g.items.map((p) => `<option value="${esc(p.code)}">${esc(p.name)}</option>`).join('')}</optgroup>`).join('');
     const model = catalog.makes[0] && catalog.makes[0].models.find((m) => m.code === 'model-y');
     S.generation = model && model.generations[0];
     if (!S.generation || !S.generation.trims.length) throw new Error('目錄中沒有可用的 Model Y 版本。');

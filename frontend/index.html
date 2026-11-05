@@ -58,6 +58,23 @@ body.busy{cursor:progress}
 .trimrow{display:flex;flex-direction:column;gap:6px}
 .trimrow select{font:600 16px var(--body);color:var(--fg);background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:9px 10px;width:100%}
 .trimrow select:focus{outline:none;border-color:var(--accent)}
+.partrow{display:flex;flex-direction:column;gap:8px}
+.partrow select{font:500 14px var(--body);color:var(--fg);background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%}
+.partrow select:focus{outline:none;border-color:var(--accent)}
+.nopos{font-size:12px;color:var(--muted);margin:6px 0 0;line-height:1.5}
+.step{display:flex;flex-direction:column;gap:6px}
+.step .label{font-size:11.5px;font-weight:700;letter-spacing:.06em;color:var(--muted)}
+.chip.pick{border-style:solid;display:inline-flex;align-items:center;gap:6px}
+.chip.pick small{font-size:10.5px;color:var(--muted)}
+.chip.pick[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent)}
+.prods{display:flex;flex-direction:column;gap:4px}
+.prod{display:flex;align-items:center;gap:8px;font:500 13.5px var(--body);color:var(--fg);background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;cursor:pointer;text-align:left}
+.prod span{flex:1;min-width:0;overflow-wrap:anywhere}
+.prod small{font:500 11.5px var(--display);color:var(--muted);font-variant-numeric:tabular-nums}
+.prod b{font-size:12px;color:var(--accent);font-weight:700}
+.prod.ghost{background:transparent;border-style:dashed}
+.prod:hover{border-color:var(--accent)}
+.item .meta{display:block;font-size:11.5px;color:var(--muted);margin-top:1px}
 .gen{font-size:12px;color:var(--muted)}
 dl.specs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:10px 0 0}
 .spec{background:var(--panel);padding:8px 10px;min-width:0}
@@ -126,7 +143,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,.item:focus-visibl
   <div class="stage" id="stage">
     <div class="hud">
       <div class="brand">MODEL Y</div>
-      <div class="hint">拖曳旋轉 · 點擊部位新增配件 · 雙擊車門或前後廂開關</div>
+      <div class="hint">拖曳旋轉 · 點擊車項新增配件 · 雙擊車門或前後廂開關</div>
     </div>
     <div class="mode" id="mode" hidden title="後端未連線，資料只存在這個瀏覽器">離線示範資料</div>
     <div id="labels"></div>
@@ -151,8 +168,9 @@ button:focus-visible,input:focus-visible,select:focus-visible,.item:focus-visibl
       <dl class="specs" id="specs"></dl>
       <p class="specnote" id="specNote"></p>
     </section>
-    <section>
-      <h2>目前部位</h2>
+    <section class="partrow">
+      <h2><label for="partSel">車項</label></h2>
+      <select id="partSel"></select>
       <div class="card" id="selCard"></div>
     </section>
     <section>
