@@ -4,12 +4,14 @@
   const AV = window.AV;
   const ACCENT = 0xf0a020;
   const REDUCE = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const STATUS = { considering: '評估中', planned: '準備購買', purchased: '已購買', installed: '已安裝' };
+  // 選定產品後的狀態；null = 尚未購買
+  const STATUS = { purchased: '已購買', installed: '已安裝' };
 
   const S = {
     client: null, catalog: null, generation: null, parts: {}, trims: [],
     trimCache: {}, assetCache: {}, build: null, trim: null, asset: null, car: null,
-    sel: null, selType: null, hover: null, pending: null, busy: false, placeable: new Set()
+    sel: null, hover: null, pending: null, busy: false, placeable: new Set(),
+    brands: [], openForm: null   // openForm：正在填自訂產品表單的配件 id
   };
 
   /* ---------- Scene ---------- */
@@ -115,8 +117,8 @@
       const pv = S.car.placePin(m, a.position.p, a.position.n, a.partCode);
       const el = document.createElement('div'); el.className = 'pl' + (a.partCode === S.sel ? ' on' : '');
       const num = document.createElement('span'); num.className = 'num'; num.textContent = list.indexOf(a) + 1;
-      const t = document.createElement('span'); t.className = 't'; t.textContent = a.name;
-      el.append(num, t); el.title = partName(a.partCode) + '：' + a.name;
+      const t = document.createElement('span'); t.className = 't'; t.textContent = accLabel(a);
+      el.append(num, t); el.title = partName(a.partCode) + '：' + accLabel(a);
       el.addEventListener('click', () => focusAcc(a));
       labelsEl.appendChild(el);
       const p = new THREE.Vector3(...a.position.p);
@@ -197,36 +199,138 @@
     $('#swname').textContent = cur ? cur.name : '';
   }
 
+  /* ---------- Accessory helpers ---------- */
+  const selectedOf = (a) => { const c = a.products.find((x) => x.isSelected); return c ? c.product : null; };
+  const accLabel = (a) => { const p = selectedOf(a); return p ? `${a.accessoryType.name} · ${p.displayName}` : a.accessoryType.name; };
+  const stars = (n) => (n ? '★'.repeat(n) + '☆'.repeat(5 - n) : '');
+  const money = (n) => (n == null ? '' : 'NT$ ' + Number(n).toLocaleString('en-US'));
+  const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
+  function productMeta(p) {
+    return [p.model ? `型號 ${esc(p.model)}` : '', money(p.suggestedPriceTwd),
+      p.rating ? `<span class="stars" aria-label="推薦指數 ${p.rating}／5">${stars(p.rating)}</span>` : '',
+      p.source === 'custom' ? '<span class="tag">自訂</span>' : ''].filter(Boolean).join('<i>·</i>');
+  }
+  function replaceAcc(updated) {
+    const k = S.build.accessories.findIndex((x) => x.id === updated.id);
+    if (k >= 0) S.build.accessories[k] = updated; else S.build.accessories.push(updated);
+  }
+
+  /** 全部配件清單中的一列。 */
   function itemRow(a) {
     const i = S.build.accessories.indexOf(a);
-    const row = document.createElement('div'); row.className = 'item'; row.tabIndex = 0;
-    const meta = [a.accessoryTypeName && a.accessoryTypeName !== a.name ? a.accessoryTypeName : '', a.category ? a.category.name : '']
-      .filter(Boolean).join(' · ');
+    const sp = selectedOf(a);
+    const row = el('div', 'item'); row.tabIndex = 0;
+    const meta = sp ? esc(sp.displayName)
+      : a.products.length ? `尚未選定 · ${a.products.length} 個候選產品` : '尚未加入產品';
     row.innerHTML = `<span class="num${a.position ? '' : ' off'}">${i + 1}</span>` +
-      `<span class="t">${esc(a.name)}${a.isExample ? '<span class="ex">範例</span>' : ''}` +
-      `${meta ? `<span class="meta">${esc(meta)}</span>` : ''}</span>`;
-    const st = document.createElement('select'); st.className = 'status'; st.setAttribute('aria-label', a.name + ' 的狀態');
-    st.innerHTML = Object.entries(STATUS).map(([k, v]) => `<option value="${k}"${k === a.status ? ' selected' : ''}>${v}</option>`).join('');
-    st.dataset.s = a.status;
-    st.addEventListener('click', (e) => e.stopPropagation());
-    st.addEventListener('change', () => run(async () => {
-      const upd = await S.client.updateAccessory(S.build.id, a.id, { status: st.value });
-      Object.assign(a, upd); st.dataset.s = a.status; toast(`「${a.name}」改為${STATUS[a.status]}`);
-    }));
-    const del = document.createElement('button'); del.type = 'button'; del.className = 'del'; del.textContent = '×';
-    del.setAttribute('aria-label', '刪除 ' + a.name);
-    del.addEventListener('click', (e) => {
-      e.stopPropagation();
-      run(async () => {
-        await S.client.deleteAccessory(S.build.id, a.id);
-        S.build.accessories = S.build.accessories.filter((x) => x !== a);
-        renderAll(); toast('已刪除「' + a.name + '」');
-      });
-    });
-    row.append(st, del);
+      `<span class="t">${esc(a.accessoryType.name)}${a.accessoryType.isCustom ? '<span class="tag">自訂</span>' : ''}` +
+      `${a.isExample ? '<span class="ex">範例</span>' : ''}<span class="meta${sp ? ' chosen' : ''}">${meta}</span></span>` +
+      (a.status ? `<span class="badge" data-s="${a.status}">${STATUS[a.status]}</span>` : '');
+    const del = el('button', 'del', '×'); del.type = 'button';
+    del.setAttribute('aria-label', '刪除 ' + a.accessoryType.name);
+    del.addEventListener('click', (e) => { e.stopPropagation(); removeAccessory(a); });
+    row.appendChild(del);
     row.addEventListener('click', () => focusAcc(a));
     row.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === row) focusAcc(a); });
     return row;
+  }
+
+  /** 車項下的一個配件：候選產品（單選、可清除）、加入產品、狀態。 */
+  function accessoryCard(a) {
+    const box = el('div', 'acc');
+    const sp = selectedOf(a);
+    const head = el('div', 'acc-head',
+      `<b>${esc(a.accessoryType.name)}</b>` +
+      (a.accessoryType.category ? `<small>${esc(a.accessoryType.category.name)}</small>` : '') +
+      (a.accessoryType.isCustom ? '<span class="tag">自訂配件</span>' : ''));
+    const del = el('button', 'del', '×'); del.type = 'button'; del.setAttribute('aria-label', '刪除配件 ' + a.accessoryType.name);
+    del.addEventListener('click', () => removeAccessory(a));
+    head.appendChild(del);
+    box.appendChild(head);
+
+    // 候選產品：radio 單選，選中顯示綠色勾勾；再點一次已選的那筆可取消
+    if (a.products.length) {
+      const group = el('div', 'cands'); group.setAttribute('role', 'radiogroup');
+      group.setAttribute('aria-label', a.accessoryType.name + '的產品');
+      for (const c of a.products) {
+        const row = el('div', 'cand' + (c.isSelected ? ' on' : ''));
+        const lab = el('label');
+        const r = document.createElement('input'); r.type = 'radio'; r.name = 'sel-' + a.id; r.value = c.id; r.checked = c.isSelected;
+        r.addEventListener('click', (e) => { e.preventDefault(); chooseCandidate(a, c, !c.isSelected); });
+        lab.append(r, el('span', 'radio', '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>'),
+          el('span', 'pinfo', `<span class="pname">${esc(c.product.displayName)}</span>` +
+            `<span class="pmeta">${productMeta(c.product)}</span>`));
+        const rm = el('button', 'del', '×'); rm.type = 'button'; rm.setAttribute('aria-label', '移除 ' + c.product.displayName);
+        rm.addEventListener('click', () => removeCandidate(a, c));
+        row.append(lab, rm);
+        group.appendChild(row);
+      }
+      box.appendChild(group);
+    } else {
+      box.appendChild(el('p', 'nopos', '還沒有產品。從下方選單加入，或新增自訂產品。'));
+    }
+
+    // 選定後才出現狀態
+    if (sp) {
+      const st = el('div', 'statusrow');
+      const sel = document.createElement('select'); sel.className = 'status'; sel.dataset.s = a.status || '';
+      sel.setAttribute('aria-label', a.accessoryType.name + ' 的狀態');
+      sel.innerHTML = `<option value="">尚未購買</option>` +
+        Object.entries(STATUS).map(([k, v]) => `<option value="${k}"${k === a.status ? ' selected' : ''}>${v}</option>`).join('');
+      sel.addEventListener('change', () => setStatus(a, sel.value || null));
+      const clr = el('button', 'link', '取消選定'); clr.type = 'button';
+      clr.addEventListener('click', () => chooseCandidate(a, a.products.find((x) => x.isSelected), false));
+      st.append(el('span', 'label', '狀態'), sel, clr);
+      box.appendChild(st);
+    }
+
+    // 加入產品：內建選單或自訂
+    const builtin = a.accessoryType.isCustom ? [] :
+      (((S.parts[a.partCode] || {}).accessoryTypes || []).find((t) => t.id === a.accessoryType.id) || { products: [] }).products
+        .filter((p) => !a.products.some((c) => c.product.id === p.id));
+    const addRow = el('div', 'addrow');
+    if (builtin.length) {
+      const pick = document.createElement('select'); pick.className = 'addprod'; pick.setAttribute('aria-label', '加入產品');
+      pick.innerHTML = '<option value="">加入產品…</option>' + builtin.map((p) =>
+        `<option value="${p.id}">${esc(p.displayName)}${p.suggestedPriceTwd != null ? '｜' + money(p.suggestedPriceTwd) : ''}${p.rating ? '｜' + stars(p.rating) : ''}</option>`).join('');
+      pick.addEventListener('change', () => { if (pick.value) addCandidate(a, { productId: +pick.value, select: !a.products.length }); });
+      addRow.appendChild(pick);
+    }
+    const custom = el('button', 'link', S.openForm === a.id ? '取消自訂產品' : '＋ 自訂產品'); custom.type = 'button';
+    custom.addEventListener('click', () => { S.openForm = S.openForm === a.id ? null : a.id; renderSel(); });
+    addRow.appendChild(custom);
+    box.appendChild(addRow);
+    if (S.openForm === a.id) box.appendChild(customProductForm(a));
+    return box;
+  }
+
+  function customProductForm(a) {
+    const f = el('form', 'cform');
+    const id = (k) => `cp-${k}-${a.id}`;
+    f.innerHTML =
+      `<label for="${id('brand')}">品牌<input id="${id('brand')}" list="brandList" maxlength="60" autocomplete="off" placeholder="選擇或輸入"></label>` +
+      `<label for="${id('name')}">名稱<input id="${id('name')}" required maxlength="60" autocomplete="off"></label>` +
+      `<label for="${id('model')}">型號<input id="${id('model')}" maxlength="60" autocomplete="off"></label>` +
+      `<label for="${id('price')}">建議售價<input id="${id('price')}" type="number" min="0" step="100" inputmode="numeric" placeholder="NT$"></label>` +
+      `<label for="${id('rating')}" class="wide">推薦指數<select id="${id('rating')}"><option value="">不評分</option>` +
+      [5, 4, 3, 2, 1].map((n) => `<option value="${n}">${stars(n)}　${n} 星</option>`).join('') + `</select></label>` +
+      `<div class="wide actions"><button class="btn" type="submit">加入產品</button></div>`;
+    f.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const v = (k) => f.querySelector('#' + id(k)).value.trim();
+      const brandText = v('brand');
+      const brand = S.brands.find((b) => b.name === brandText || b.code.toLowerCase() === brandText.toLowerCase());
+      const custom = {
+        brandId: brand ? brand.id : undefined, brandName: !brand && brandText ? brandText : undefined,
+        name: v('name'), model: v('model') || undefined,
+        suggestedPriceTwd: v('price') === '' ? undefined : Number(v('price')),
+        rating: v('rating') === '' ? undefined : Number(v('rating'))
+      };
+      if (!custom.name) return;
+      S.openForm = null;
+      addCandidate(a, { custom, select: !a.products.length });
+    });
+    return f;
   }
 
   function renderSel() {
@@ -237,56 +341,36 @@
       return null;
     }
     const p = S.parts[S.sel] || { name: S.sel, category: '', accessoryTypes: [] };
-    const types = p.accessoryTypes || [];
-    if (S.selType && !types.some((t) => t.id === S.selType)) S.selType = null;
-    const head = document.createElement('div');
-    head.innerHTML = `<div class="cat">${esc(p.category)}</div><p class="partname">${esc(p.name)}</p>` +
-      (S.placeable.has(S.sel) ? '' : '<p class="nopos">這個車項在模型上沒有位置，配件只會列在清單中。</p>');
-    c.appendChild(head);
-
-    if (types.length) {
-      const step = document.createElement('div'); step.className = 'step';
-      step.innerHTML = '<div class="label">配件</div>';
-      const chips = document.createElement('div'); chips.className = 'chips';
-      for (const t of types) {
-        const b = document.createElement('button'); b.type = 'button'; b.className = 'chip pick';
-        b.setAttribute('aria-pressed', t.id === S.selType);
-        b.innerHTML = esc(t.name) + (t.category ? `<small>${esc(t.category.name)}</small>` : '');
-        b.addEventListener('click', () => { S.selType = S.selType === t.id ? null : t.id; renderSel(); });
-        chips.appendChild(b);
-      }
-      step.appendChild(chips);
-      c.appendChild(step);
-
-      const t = types.find((x) => x.id === S.selType);
-      if (t) {
-        const step2 = document.createElement('div'); step2.className = 'step';
-        step2.innerHTML = `<div class="label">${esc(t.name)}的產品</div>`;
-        const list = document.createElement('div'); list.className = 'prods';
-        for (const pr of t.products) {
-          const b = document.createElement('button'); b.type = 'button'; b.className = 'prod';
-          b.innerHTML = `<span>${esc(pr.displayName)}</span>` +
-            (pr.priceTwd != null ? `<small>NT$ ${Number(pr.priceTwd).toLocaleString('en-US')}</small>` : '') + '<b>新增</b>';
-          b.addEventListener('click', () => addAcc({ accessoryTypeId: t.id, productId: pr.id }));
-          list.appendChild(b);
-        }
-        const only = document.createElement('button'); only.type = 'button'; only.className = 'prod ghost';
-        only.innerHTML = `<span>先加「${esc(t.name)}」，之後再選產品</span><b>新增</b>`;
-        only.addEventListener('click', () => addAcc({ accessoryTypeId: t.id }));
-        list.appendChild(only);
-        step2.appendChild(list);
-        c.appendChild(step2);
-      }
-    }
-
-    const form = document.createElement('form'); form.className = 'add';
-    form.innerHTML = '<input id="accName" type="text" maxlength="40" autocomplete="off" placeholder="' +
-      (types.length ? '清單裡沒有？輸入自訂配件名稱' : '輸入配件名稱') + '" aria-label="自訂配件名稱"><button class="btn" type="submit">新增</button>';
-    form.addEventListener('submit', (e) => { e.preventDefault(); const v = form.querySelector('input').value.trim(); if (v) addAcc({ name: v }); });
-    c.appendChild(form);
+    c.appendChild(el('div', null, `<div class="cat">${esc(p.category)}</div><p class="partname">${esc(p.name)}</p>` +
+      (S.placeable.has(S.sel) ? '' : '<p class="nopos">這個車項在模型上沒有位置，配件只會列在清單中。</p>')));
 
     const mine = S.build.accessories.filter((a) => a.partCode === S.sel);
-    if (mine.length) { const l = document.createElement('div'); mine.forEach((a) => l.appendChild(itemRow(a))); c.appendChild(l); }
+    if (mine.length) {
+      const list = el('div', 'step', '<div class="label">配件</div>');
+      mine.forEach((a) => list.appendChild(accessoryCard(a)));
+      c.appendChild(list);
+    }
+
+    // 新增配件：內建配件或自訂配件
+    const add = el('div', 'step', `<div class="label">${mine.length ? '再加一項配件' : '新增配件'}</div>`);
+    const remaining = (p.accessoryTypes || []).filter((t) => !mine.some((a) => !a.accessoryType.isCustom && a.accessoryType.id === t.id));
+    if (remaining.length) {
+      const chips = el('div', 'chips');
+      for (const t of remaining) {
+        const b = el('button', 'chip', '+ ' + esc(t.name) + (t.category ? ` <small>${esc(t.category.name)}</small>` : '')); b.type = 'button';
+        b.addEventListener('click', () => addAccessory({ accessoryTypeId: t.id }));
+        chips.appendChild(b);
+      }
+      add.appendChild(chips);
+    }
+    const form = el('form', 'add',
+      '<input id="accName" type="text" maxlength="40" autocomplete="off" placeholder="自訂配件名稱，例如雨刷" aria-label="自訂配件名稱">' +
+      '<button class="btn" type="submit">新增配件</button>');
+    form.addEventListener('submit', (e) => {
+      e.preventDefault(); const v = form.querySelector('input').value.trim(); if (v) addAccessory({ customAccessoryName: v });
+    });
+    add.appendChild(form);
+    c.appendChild(add);
     return form.querySelector('input');
   }
 
@@ -301,8 +385,8 @@
     const groups = {};
     acc.forEach((a) => (groups[a.partCode] = groups[a.partCode] || []).push(a));
     for (const code of Object.keys(groups)) {
-      const g = document.createElement('div'); g.className = 'group';
-      const gh = document.createElement('button'); gh.type = 'button'; gh.className = 'gh'; gh.textContent = partName(code);
+      const g = el('div', 'group');
+      const gh = el('button', 'gh', esc(partName(code))); gh.type = 'button';
       gh.addEventListener('click', () => focusAcc(groups[code][0]));
       g.appendChild(gh); groups[code].forEach((a) => g.appendChild(itemRow(a))); list.appendChild(g);
     }
@@ -310,8 +394,9 @@
     return input;
   }
 
-  /** 新增配件：{ accessoryTypeId?, productId?, name? }，位置用點擊處或同車項上一筆的位置。 */
-  async function addAcc(choice) {
+  /* ---------- Accessory actions ---------- */
+  /** 在目前車項加入配件：{ accessoryTypeId } 或 { customAccessoryName }。位置用點擊處或同車項既有配件的位置。 */
+  async function addAccessory(choice) {
     if (!S.sel || S.busy) return;
     let pos = S.placeable.has(S.sel) ? S.pending : null;
     if (!pos && S.placeable.has(S.sel)) {
@@ -319,18 +404,48 @@
     }
     await run(async () => {
       const a = await S.client.addAccessory(S.build.id, { partCode: S.sel, assetId: S.asset.id, position: pos, ...choice });
-      S.build.accessories.push(a);
-      const input = renderAll();
-      toast(`已在「${partName(a.partCode)}」新增「${a.name}」`);
-      if (choice.name && input && matchMedia('(pointer:fine)').matches) input.focus();
+      replaceAcc(a);
+      renderAll();
+      toast(`已在「${partName(a.partCode)}」加入「${a.accessoryType.name}」`);
+    });
+  }
+  async function removeAccessory(a) {
+    await run(async () => {
+      await S.client.deleteAccessory(S.build.id, a.id);
+      S.build.accessories = S.build.accessories.filter((x) => x.id !== a.id);
+      renderAll(); toast('已刪除「' + a.accessoryType.name + '」');
+    });
+  }
+  async function addCandidate(a, body) {
+    await run(async () => {
+      replaceAcc(await S.client.addCandidate(S.build.id, a.id, body));
+      renderAll(); toast('已加入產品');
+    });
+  }
+  async function chooseCandidate(a, c, on) {
+    if (!c) return;
+    await run(async () => {
+      replaceAcc(await S.client.updateCandidate(S.build.id, a.id, c.id, { isSelected: on }));
+      renderAll(); toast(on ? `已選定「${c.product.displayName}」` : '已取消選定');
+    });
+  }
+  async function removeCandidate(a, c) {
+    await run(async () => {
+      replaceAcc(await S.client.deleteCandidate(S.build.id, a.id, c.id));
+      renderAll(); toast('已移除「' + c.product.displayName + '」');
+    });
+  }
+  async function setStatus(a, status) {
+    await run(async () => {
+      replaceAcc(await S.client.updateAccessory(S.build.id, a.id, status ? { status } : { clear: ['status'] }));
+      renderAll(); toast(status ? `「${a.accessoryType.name}」改為${STATUS[status]}` : `「${a.accessoryType.name}」改為尚未購買`);
     });
   }
 
   function select(code, pos) {
-    if (code !== S.sel) S.selType = null;
+    if (code !== S.sel) S.openForm = null;
     S.sel = code; S.pending = pos;
-    const input = renderAll();
-    if (input && matchMedia('(pointer:fine)').matches) input.focus({ preventScroll: true });
+    renderAll();
   }
   function focusAcc(a) {
     select(a.partCode, a.position);
@@ -420,9 +535,14 @@
   $('#copyBtn').addEventListener('click', () => {
     const acc = S.build.accessories;
     const head = `${S.trim.generation.modelName} ${S.trim.name}（${S.trim.modelYear}）`;
-    const tsv = [head, '編號\t車項\t配件\t產品\t分類\t狀態']
-      .concat(acc.map((a, i) => [i + 1, partName(a.partCode), a.accessoryTypeName || a.name, a.productName || '',
-        a.category ? a.category.name : '', STATUS[a.status] || a.status].join('\t'))).join('\n');
+    const rows = acc.map((a, i) => {
+      const p = selectedOf(a) || {};
+      return [i + 1, partName(a.partCode), a.accessoryType.name + (a.accessoryType.isCustom ? '（自訂）' : ''),
+        a.accessoryType.category ? a.accessoryType.category.name : '',
+        p.brandName || '', p.name || '', p.model || '', p.suggestedPriceTwd ?? '', p.rating ?? '',
+        a.status ? STATUS[a.status] : (p.name ? '尚未購買' : '尚未選定'), a.products.length].join('\t');
+    });
+    const tsv = [head, '編號\t車項\t配件\t分類\t品牌\t產品名稱\t型號\t建議售價\t推薦指數\t狀態\t候選產品數'].concat(rows).join('\n');
     const buf = $('#copyBuf');
     const fallback = () => { buf.value = tsv; buf.hidden = false; buf.focus(); buf.select(); toast('已選取清單，請按 Ctrl＋C 或長按複製'); };
     try { navigator.clipboard.writeText(tsv).then(() => { buf.hidden = true; toast('已複製，可直接貼到 Google Sheets'); }, fallback); }
@@ -444,28 +564,31 @@
   }
 
   async function seedExamples() {
-    // 從目錄挑配件與產品（找不到就改用自訂名稱）
-    const pick = (partCode, typeName, productName, fallback) => {
-      const t = ((S.parts[partCode] || {}).accessoryTypes || []).find((x) => x.name === typeName);
-      const pr = t && t.products.find((x) => x.name === productName);
-      return t ? { accessoryTypeId: t.id, productId: pr ? pr.id : undefined } : { name: fallback };
-    };
+    // 前擋玻璃：內建配件「隔熱紙」，候選舒熱佳 LX（選定）與 XE；其他車項示範自訂配件
+    const wind = (S.parts.windshield || {}).accessoryTypes || [];
+    const film = wind.find((t) => t.name === '隔熱紙');
     const ex = [
-      ['windshield', pick('windshield', '隔熱紙', 'LX', '前擋隔熱紙'), [3, 1.6, 0.2], [-2.3, -0.4, 0]],
-      ['front-bumper', { name: '全車犀牛皮 PPF' }, [5, 0.5, 0.3], [-1, 0, 0]],
-      ['roof', { name: '天窗遮陽簾' }, [-0.4, 5, 0.1], [0, -1, 0]],
+      ['windshield', film ? { accessoryTypeId: film.id } : { customAccessoryName: '隔熱紙' }, [3, 1.6, 0.2], [-2.3, -0.4, 0]],
+      ['front-bumper', { customAccessoryName: '犀牛皮 PPF' }, [5, 0.5, 0.3], [-1, 0, 0]],
+      ['roof', { customAccessoryName: '天窗遮陽簾' }, [-0.4, 5, 0.1], [0, -1, 0]],
       // 輪框外圈的高度依輪胎尺寸計算
-      ['rim', { name: '輪框保護圈' }, [S.trim.specs.wheelbaseMm / 2000,
+      ['rim', { customAccessoryName: '輪框保護圈' }, [S.trim.specs.wheelbaseMm / 2000,
         S.trim.tires[0].overallDiameterMm / 2000 + S.trim.tires[0].rimDiameterIn * 0.0127 - 0.01, -5], [0, 0, 1]],
-      ['tailgate', { name: '碳纖維尾翼' }, [-5, 0.9, 0], [1, 0, 0]]
+      ['tailgate', { customAccessoryName: '尾翼' }, [-5, 0.9, 0], [1, 0, 0]]
     ];
     S.car.group.updateMatrixWorld(true);
     for (const [expect, choice, o, d] of ex) {
       rc.set(new THREE.Vector3(...o), new THREE.Vector3(...d).normalize());
       const h = S.car.raycast(rc);
       if (!h || h.partCode !== expect) continue;
-      const a = await S.client.addAccessory(S.build.id, { partCode: h.partCode, ...choice, assetId: S.asset.id, position: { p: h.p, n: h.n }, isExample: true });
-      S.build.accessories.push(a);
+      let a = await S.client.addAccessory(S.build.id, { partCode: h.partCode, ...choice, assetId: S.asset.id, position: { p: h.p, n: h.n }, isExample: true });
+      if (film && choice.accessoryTypeId === film.id) {
+        for (const [name, sel] of [['LX', true], ['XE', false]]) {
+          const pr = film.products.find((x) => x.name === name);
+          if (pr) a = await S.client.addCandidate(S.build.id, a.id, { productId: pr.id, select: sel });
+        }
+      }
+      replaceAcc(a);
     }
   }
 
@@ -503,7 +626,9 @@
   async function boot() {
     S.client = await AV.createClient();
     $('#mode').hidden = S.client.mode !== 'mock';
-    const [catalog, parts] = await Promise.all([S.client.catalog(), S.client.parts()]);
+    const [catalog, parts, brands] = await Promise.all([S.client.catalog(), S.client.parts(), S.client.brands()]);
+    S.brands = brands;
+    $('#brandList').innerHTML = brands.map((b) => `<option value="${esc(b.name)}">${esc(b.code)}</option>`).join('');
     S.catalog = catalog;
     parts.forEach((p) => (S.parts[p.code] = p));
     // 車項下拉：依分組列出

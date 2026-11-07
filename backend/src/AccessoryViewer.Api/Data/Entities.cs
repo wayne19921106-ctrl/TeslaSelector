@@ -145,13 +145,22 @@ public class AccessoryCategory
     public int SortOrder { get; set; }
 }
 
-/// <summary>配件，例如隔熱紙、玻璃鍍膜。</summary>
+public static class CatalogSource
+{
+    public const string Builtin = "builtin";
+    public const string Custom = "custom";
+}
+
+/// <summary>配件，例如隔熱紙、玻璃鍍膜。內建配件由後台維護，自訂配件屬於某份配置清單。</summary>
 public class AccessoryType
 {
     public int Id { get; set; }
     public string Name { get; set; } = "";
     public short? CategoryId { get; set; }
     public AccessoryCategory? Category { get; set; }
+    public string Source { get; set; } = CatalogSource.Builtin;
+    public Guid? OwnerBuildId { get; set; }
+    public Guid? OwnerMemberId { get; set; }
     public int SortOrder { get; set; }
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
@@ -169,21 +178,48 @@ public class PartAccessoryType
     public List<PartAccessoryProduct> Products { get; set; } = [];
 }
 
-/// <summary>產品，例如舒熱佳 LX。</summary>
-public class Product
+/// <summary>品牌。Code 為英文品牌名，唯一（不分大小寫）。</summary>
+public class Brand
 {
     public int Id { get; set; }
-    public string Brand { get; set; } = "";
+    public string Code { get; set; } = "";
     public string Name { get; set; } = "";
+    public string? LogoUrl { get; set; }
+    public string? PromoCode { get; set; }
     public string? Description { get; set; }
-    public int? PriceTwd { get; set; }
     public string? Url { get; set; }
     public int SortOrder { get; set; }
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+}
 
-    public string DisplayName => $"{Brand} {Name}";
+/// <summary>產品。內建產品必須有品牌；自訂產品可選既有品牌或直接輸入品牌文字。</summary>
+public class Product
+{
+    public int Id { get; set; }
+    public int AccessoryTypeId { get; set; }
+    public int? BrandId { get; set; }
+    public Brand? Brand { get; set; }
+    public string? BrandName { get; set; }
+    public string Name { get; set; } = "";
+    public string? Model { get; set; }
+    public int? SuggestedPriceTwd { get; set; }
+    public short? Rating { get; set; }
+    public string? Description { get; set; }
+    public string? Url { get; set; }
+    public string Source { get; set; } = CatalogSource.Builtin;
+    public Guid? OwnerBuildId { get; set; }
+    public Guid? OwnerMemberId { get; set; }
+    public int SortOrder { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+
+    /// <summary>顯示用品牌名稱：品牌中文名稱或自訂品牌文字。</summary>
+    public string? BrandLabel => Brand?.Name ?? BrandName;
+    public string DisplayName =>
+        string.Join(" ", new[] { BrandLabel, Name, Model }.Where(s => !string.IsNullOrWhiteSpace(s)));
 }
 
 /// <summary>某車項的某配件可選的產品。</summary>
@@ -242,17 +278,25 @@ public class BuildAccessory
     public int PartId { get; set; }
     public Part Part { get; set; } = null!;
     public int? AssetId { get; set; }
-    public int? AccessoryTypeId { get; set; }
-    public AccessoryType? AccessoryType { get; set; }
-    public int? ProductId { get; set; }
-    public Product? Product { get; set; }
-    /// <summary>顯示名稱：自訂名稱，或由產品／配件名稱帶入。</summary>
-    public string Name { get; set; } = "";
-    public string Status { get; set; } = "considering";
-    public int? PriceTwd { get; set; }
+    public int AccessoryTypeId { get; set; }
+    public AccessoryType AccessoryType { get; set; } = null!;
+    /// <summary>purchased／installed；只在有選定產品時可設，null = 尚未購買。</summary>
+    public string? Status { get; set; }
     public string? Note { get; set; }
     public JsonDocument? Position { get; set; }
     public bool IsExample { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+    public List<BuildAccessoryProduct> Products { get; set; } = [];
+}
+
+/// <summary>配件底下的候選產品；同一配件最多一筆 IsSelected。</summary>
+public class BuildAccessoryProduct
+{
+    public Guid Id { get; set; }
+    public Guid BuildAccessoryId { get; set; }
+    public int ProductId { get; set; }
+    public Product Product { get; set; } = null!;
+    public bool IsSelected { get; set; }
+    public DateTime CreatedAt { get; set; }
 }

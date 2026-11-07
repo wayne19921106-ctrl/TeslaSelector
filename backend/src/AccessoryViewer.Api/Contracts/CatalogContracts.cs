@@ -52,8 +52,8 @@ public sealed record OpeningDto(
     string Code, string Name, double[] Hinge, string Axis, decimal OpenAngleDeg,
     RegionDto? BodyRegion, RegionDto? GlassRegion, IReadOnlyList<string> MeshKeys);
 
-// ---- /parts、/accessory-categories ---------------------------------------------
-/// <summary>車項與其可裝配件、各配件的適用產品。</summary>
+// ---- /parts、/accessory-categories、/brands --------------------------------------
+/// <summary>車項與其可裝的內建配件、各配件的內建產品。</summary>
 public sealed record PartDto(string Code, string Name, string Category, IReadOnlyList<PartAccessoryDto> AccessoryTypes);
 
 /// <summary>車項可裝的配件；Category 在分類尚未對應前為 null。</summary>
@@ -61,4 +61,14 @@ public sealed record PartAccessoryDto(int Id, string Name, AccessoryCategoryDto?
 
 public sealed record AccessoryCategoryDto(string Code, string Name);
 
-public sealed record ProductDto(int Id, string Brand, string Name, string DisplayName, int? PriceTwd, string? Url);
+public sealed record BrandDto(int Id, string Code, string Name, string? LogoUrl, string? PromoCode, string? Description, string? Url);
+
+public sealed record BrandRefDto(int Id, string Code, string Name, string? LogoUrl);
+
+/// <summary>
+/// 產品。Source = builtin（內建）／custom（使用者自訂）。
+/// Brand 為內建品牌；自訂產品若直接輸入品牌文字，Brand 為 null、BrandName 為該文字。
+/// </summary>
+public sealed record ProductDto(
+    int Id, string Source, BrandRefDto? Brand, string? BrandName, string Name, string? Model,
+    int? SuggestedPriceTwd, short? Rating, string? Url, string DisplayName);

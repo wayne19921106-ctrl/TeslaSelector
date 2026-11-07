@@ -12,15 +12,19 @@
 | GET | `/catalog?market=TW` | 品牌 → 車系 → 世代 → 版本 目錄，用於版本下拉選單 |
 | GET | `/trims/{trimId}` | 版本完整規格、輪胎、可選車漆、可用模型資源 |
 | GET | `/assets/{assetId}` | 模型資源：產生器參數、部位對應、可開啟件 |
-| GET | `/parts` | 車項目錄，含可裝配件與適用產品 |
+| GET | `/parts` | 車項目錄，含可裝的內建配件與內建產品 |
 | GET | `/accessory-categories` | 配件分類（外觀、內裝、安全、操控） |
+| GET | `/brands` | 品牌清單 |
 | POST | `/builds` | 建立配置清單 |
 | GET | `/builds/{buildId}` | 取得配置清單與其配件 |
 | PATCH | `/builds/{buildId}` | 修改名稱、版本或車漆 |
 | DELETE | `/builds/{buildId}` | 刪除配置清單（連同配件） |
-| POST | `/builds/{buildId}/accessories` | 新增配件標註 |
-| PATCH | `/builds/{buildId}/accessories/{accessoryId}` | 修改配件 |
+| POST | `/builds/{buildId}/accessories` | 在車項下加入配件（內建或自訂） |
+| PATCH | `/builds/{buildId}/accessories/{accessoryId}` | 修改狀態、備註、位置 |
 | DELETE | `/builds/{buildId}/accessories/{accessoryId}` | 刪除配件 |
+| POST | `/builds/{buildId}/accessories/{accessoryId}/products` | 加入候選產品（內建或自訂） |
+| PATCH | `/builds/{buildId}/accessories/{accessoryId}/products/{candidateId}` | 選定／取消選定候選產品 |
+| DELETE | `/builds/{buildId}/accessories/{accessoryId}/products/{candidateId}` | 移除候選產品 |
 | GET | `/health` | 健康檢查（含資料庫連線），位於根路徑 `/health` |
 
 ---
@@ -106,7 +110,7 @@ Query：`market`（選填，預設 `TW`）。只回傳 `is_active` 的版本。
 
 ## GET /parts
 
-車項 → 配件 → 產品 三層目錄。`category` 是車項在介面上的分組（外觀鈑件、車內…），配件的 `category` 是配件分類（外觀、內裝、安全、操控），尚未對應時為 null。
+車項 → 內建配件 → 內建產品。`category` 是車項在介面上的分組（外觀鈑件、車內…）；配件的 `category` 是配件分類（外觀、內裝、安全、操控），尚未對應時為 null。
 
 ```json
 [
@@ -115,11 +119,11 @@ Query：`market`（選填，預設 `TW`）。只回傳 `is_active` 的版本。
     "accessoryTypes": [
       { "id": 1, "name": "隔熱紙", "category": null,
         "products": [
-          { "id": 1, "brand": "舒熱佳", "name": "LX", "displayName": "舒熱佳 LX", "priceTwd": null, "url": null },
-          { "id": 2, "brand": "舒熱佳", "name": "XE", "displayName": "舒熱佳 XE", "priceTwd": null, "url": null }
-        ] },
-      { "id": 2, "name": "玻璃鍍膜", "category": null,
-        "products": [ { "id": 3, "brand": "K-WAX", "name": "GC-300 氟素玻璃鍍膜", "displayName": "K-WAX GC-300 氟素玻璃鍍膜", "priceTwd": null, "url": null } ] }
+          { "id": 1, "source": "builtin",
+            "brand": { "id": 1, "code": "Solar Gard", "name": "舒熱佳", "logoUrl": null },
+            "brandName": "舒熱佳", "name": "LX", "model": null,
+            "suggestedPriceTwd": null, "rating": null, "url": null, "displayName": "舒熱佳 LX" }
+        ] }
     ]
   }
 ]
@@ -134,14 +138,24 @@ Query：`market`（選填，預設 `TW`）。只回傳 `is_active` 的版本。
   { "code": "safety", "name": "安全" }, { "code": "handling", "name": "操控" } ]
 ```
 
+## GET /brands
+
+```json
+[ { "id": 1, "code": "Solar Gard", "name": "舒熱佳", "logoUrl": null, "promoCode": null, "description": null, "url": null } ]
+```
+
+`code` 為品牌英文名稱，唯一（不分大小寫）。
+
 ## 配置清單（builds）
+
+結構：配置清單 → 車項下的配件（內建或自訂，同一車項同一配件一筆）→ 候選產品（內建或自訂，可多筆，最多選定一筆）。
 
 ### BuildDto
 
 ```json
 {
   "id": "6f1c…", "name": "我的 Model Y", "trimId": 1, "paintColorId": 2,
-  "createdAt": "2026-11-04T05:51:00Z", "updatedAt": "2026-11-04T05:51:00Z",
+  "createdAt": "2026-11-07T03:21:00Z", "updatedAt": "2026-11-07T03:21:00Z",
   "accessories": [AccessoryDto]
 }
 ```
@@ -151,18 +165,20 @@ Query：`market`（選填，預設 `TW`）。只回傳 `is_active` 的版本。
 ```json
 {
   "id": "a2b3…", "partCode": "windshield", "partName": "前擋玻璃", "assetId": 1,
-  "accessoryTypeId": 1, "accessoryTypeName": "隔熱紙", "category": null,
-  "productId": 1, "productName": "舒熱佳 LX",
-  "name": "舒熱佳 LX", "status": "considering", "priceTwd": 12000, "note": null,
-  "position": { "p": [0.82, 1.21, 0.2], "n": [0.55, 0.83, 0] },
-  "isExample": false, "createdAt": "…", "updatedAt": "…"
+  "accessoryType": { "id": 1, "name": "隔熱紙", "isCustom": false, "category": null },
+  "status": "purchased", "note": null,
+  "position": { "p": [0.82, 1.21, 0.2], "n": [0.55, 0.83, 0] }, "isExample": false,
+  "products": [
+    { "id": "c1…", "isSelected": true,  "product": { "id": 1, "source": "builtin", "displayName": "舒熱佳 LX", "…": "…" } },
+    { "id": "c2…", "isSelected": false, "product": { "id": 9, "source": "custom", "brand": null, "brandName": "3M",
+        "name": "極黑系列", "model": null, "suggestedPriceTwd": 15000, "rating": 4, "url": null, "displayName": "3M 極黑系列" } }
+  ],
+  "createdAt": "…", "updatedAt": "…"
 }
 ```
 
-- `status`：`considering`（評估中）／`planned`（準備購買）／`purchased`（已購買）／`installed`（已安裝）
-- `position`：參考座標系中的點與法向量，可為 null（只記錄車項、不標在模型上）
-- `name`：顯示名稱。選了產品時預設為產品名稱，只選配件時為配件名稱，也可以自訂。
-- `category`：配件分類 `{ code, name }`，配件尚未對應分類或沒有選配件時為 null。
+- `status`：`purchased`（已購買）／`installed`（已安裝）／`null`（尚未購買）。只有選定產品後才能設定；取消選定或換選定產品時自動清空。
+- `position`：參考座標系中的點與法向量，可為 null（只記錄車項、不標在模型上）。
 
 ### POST /builds
 
@@ -178,20 +194,44 @@ Query：`market`（選填，預設 `TW`）。只回傳 `is_active` 的版本。
 ### POST /builds/{buildId}/accessories
 
 ```json
-{
-  "partCode": "windshield", "accessoryTypeId": 1, "productId": 1, "assetId": 1,
-  "status": "considering", "priceTwd": 12000, "note": "含施工",
-  "position": { "p": [0.82, 1.21, 0.2], "n": [0.55, 0.83, 0] }, "isExample": false
-}
+{ "partCode": "windshield", "accessoryTypeId": 1, "assetId": 1,
+  "position": { "p": [0.82, 1.21, 0.2], "n": [0.55, 0.83, 0] } }
 ```
-- 必填：`partCode`。另外至少要有 `accessoryTypeId` 或 `name` 其中之一。
-- `accessoryTypeId` 必須是這個車項可裝的配件；`productId` 必須同時指定配件，且是該「車項 × 配件」的適用產品，否則回 400。
-- `name` 選填（1–40 字），未填時帶入產品或配件名稱；目錄裡沒有的配件就只填 `name`。
-- `priceTwd` ≥ 0，`note` ≤ 500 字，`position.p`／`position.n` 必須是 3 個有限數值。回傳 201 與 AccessoryDto。
+```json
+{ "partCode": "windshield", "customAccessoryName": "雨刷", "assetId": 1 }
+```
+- `accessoryTypeId`（內建配件，必須是這個車項可裝的配件）與 `customAccessoryName`（自訂配件，1–40 字）二擇一。
+- 同一份配置清單內同名的自訂配件共用一筆。
+- 同一車項已加過同一配件時回 409。回傳 201 與 AccessoryDto。
 
 ### PATCH /builds/{buildId}/accessories/{accessoryId}
 
-任一欄位選填：`partCode`、`accessoryTypeId`、`productId`、`name`、`status`、`priceTwd`、`note`、`position`。換配件時會清掉原本的產品；改配件或產品且沒有同時傳 `name` 時，名稱會跟著更新。要清除欄位，傳 `"clear": ["accessoryType", "product", "priceTwd", "note", "position"]` 中的任意幾項（清除配件會一併清除產品）。
+任一欄位選填：`status`（`purchased`／`installed`，需先選定產品，否則回 400）、`note`、`position`、`assetId`。清除欄位傳 `"clear": ["status", "note", "position"]` 中的任意幾項。
+
+### POST /builds/{buildId}/accessories/{accessoryId}/products
+
+```json
+{ "productId": 1, "select": true }
+```
+```json
+{ "custom": { "brandName": "3M", "name": "極黑系列", "model": "BK-35", "suggestedPriceTwd": 15000, "rating": 4 }, "select": false }
+```
+- `productId`（內建產品，必須是這個「車項 × 配件」的適用產品）與 `custom`（自訂產品）二擇一。自訂配件只能加自訂產品。
+- `custom`：`name` 必填（1–60 字）；品牌可用 `brandId` 選既有品牌，或用 `brandName` 直接輸入，二擇一或都不填；`rating` 1–5；`suggestedPriceTwd` ≥ 0。
+- `select: true` 加入後直接選定。同一產品重複加入回 409。回傳 200 與更新後的 AccessoryDto。
+
+### PATCH /builds/{buildId}/accessories/{accessoryId}/products/{candidateId}
+
+```json
+{ "isSelected": true }
+```
+- `true`：選定這筆，同配件的其他候選自動取消選定，狀態清空。
+- `false`：取消選定，狀態清空。
+- 回傳更新後的 AccessoryDto。
+
+### DELETE /builds/{buildId}/accessories/{accessoryId}/products/{candidateId}
+
+移除候選產品；若為自訂產品則一併刪除。移除的是選定產品時，狀態清空。回傳更新後的 AccessoryDto。
 
 ## 狀態碼
 
@@ -201,4 +241,5 @@ Query：`market`（選填，預設 `TW`）。只回傳 `is_active` 的版本。
 | 201 | 建立成功 |
 | 204 | 刪除成功 |
 | 400 | 驗證失敗（ProblemDetails + `errors`） |
-| 404 | 版本、資源、配置清單或配件不存在 |
+| 404 | 版本、資源、配置清單、配件或候選產品不存在 |
+| 409 | 同一車項重複加入同一配件，或同一配件重複加入同一產品 |

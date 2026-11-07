@@ -11,7 +11,7 @@
 :root{
   --bg:#e7eaee; --bg2:#f6f7f9; --panel:#fbfbfc; --fg:#14171b; --muted:#5b646e; --line:#d6dbe0;
   --chip:#edf0f3; --accent:#c27400; --accent-soft:#f6e3c2; --accent-ink:#1b1205; --danger:#b3261e;
-  --ok:#1f7a4d; --warn:#9a6700;
+  --ok:#1f7a4d; --ok-ink:#ffffff; --ok-soft:#e3f2e9; --warn:#9a6700;
   --display:"Chakra Petch","Noto Sans TC",system-ui,sans-serif;
   --body:"Noto Sans TC",system-ui,-apple-system,"PingFang TC","Microsoft JhengHei",sans-serif;
   color-scheme:light;
@@ -19,11 +19,11 @@
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#0d1013; --bg2:#1c2228; --panel:#13171b; --fg:#e7ebee; --muted:#8c97a2; --line:#262d34;
   --chip:#1c2228; --accent:#f2b33d; --accent-soft:#3a2c12; --accent-ink:#1b1205; --danger:#ff8a80;
-  --ok:#5fd49a; --warn:#f2c14e; color-scheme:dark}}
+  --ok:#5fd49a; --ok-ink:#06140c; --ok-soft:#14291d; --warn:#f2c14e; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#0d1013; --bg2:#1c2228; --panel:#13171b; --fg:#e7ebee; --muted:#8c97a2; --line:#262d34;
   --chip:#1c2228; --accent:#f2b33d; --accent-soft:#3a2c12; --accent-ink:#1b1205; --danger:#ff8a80;
-  --ok:#5fd49a; --warn:#f2c14e; color-scheme:dark}
+  --ok:#5fd49a; --ok-ink:#06140c; --ok-soft:#14291d; --warn:#f2c14e; color-scheme:dark}
 :root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
@@ -64,17 +64,48 @@ body.busy{cursor:progress}
 .nopos{font-size:12px;color:var(--muted);margin:6px 0 0;line-height:1.5}
 .step{display:flex;flex-direction:column;gap:6px}
 .step .label{font-size:11.5px;font-weight:700;letter-spacing:.06em;color:var(--muted)}
-.chip.pick{border-style:solid;display:inline-flex;align-items:center;gap:6px}
-.chip.pick small{font-size:10.5px;color:var(--muted)}
-.chip.pick[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent)}
-.prods{display:flex;flex-direction:column;gap:4px}
-.prod{display:flex;align-items:center;gap:8px;font:500 13.5px var(--body);color:var(--fg);background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;cursor:pointer;text-align:left}
-.prod span{flex:1;min-width:0;overflow-wrap:anywhere}
-.prod small{font:500 11.5px var(--display);color:var(--muted);font-variant-numeric:tabular-nums}
-.prod b{font-size:12px;color:var(--accent);font-weight:700}
-.prod.ghost{background:transparent;border-style:dashed}
-.prod:hover{border-color:var(--accent)}
+.chip small{font-size:10.5px;color:var(--muted);margin-left:4px}
+.acc{border:1px solid var(--line);border-radius:10px;padding:10px 10px 8px;display:flex;flex-direction:column;gap:8px;background:var(--panel)}
+.acc-head{display:flex;align-items:center;gap:8px;min-width:0}
+.acc-head b{font-size:15px}
+.acc-head small{font-size:11px;color:var(--muted)}
+.acc-head .del{margin-left:auto}
+.tag{display:inline-block;font-size:10.5px;font-weight:500;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:0 5px;margin-left:6px;vertical-align:1px}
+.cands{display:flex;flex-direction:column;gap:4px}
+.cand{display:flex;align-items:center;gap:4px;border:1px solid var(--line);border-radius:8px;background:var(--bg2);padding-right:2px}
+.cand.on{border-color:var(--ok);background:var(--ok-soft)}
+.cand label{flex:1;min-width:0;display:flex;align-items:center;gap:10px;padding:8px 10px;cursor:pointer}
+.cand input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
+.cand .radio{flex:none;width:20px;height:20px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;background:var(--panel)}
+.cand .radio svg{width:13px;height:13px;fill:none;stroke:var(--ok-ink);stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;opacity:0}
+.cand input:checked + .radio{background:var(--ok);border-color:var(--ok)}
+.cand input:checked + .radio svg{opacity:1}
+.cand input:focus-visible + .radio{outline:2px solid var(--accent);outline-offset:2px}
+.cand:hover{border-color:var(--ok)}
+.pinfo{display:flex;flex-direction:column;gap:1px;min-width:0}
+.pname{font-weight:500;overflow-wrap:anywhere}
+.pmeta{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.pmeta i{font-style:normal;margin:0 5px;opacity:.6}
+.pmeta .tag{margin-left:0}
+.stars{color:var(--warn);letter-spacing:1px}
+.statusrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.statusrow .label{font-size:11.5px;font-weight:700;color:var(--muted)}
+.statusrow select.status{font-size:12.5px;padding:4px 8px;color:var(--fg)}
+.addrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.addrow select.addprod{flex:1;min-width:0;font:13px var(--body);color:var(--fg);background:var(--bg2);border:1px dashed var(--line);border-radius:8px;padding:6px 8px}
+.link{font:500 12.5px var(--body);color:var(--accent);background:none;border:none;padding:4px 2px;cursor:pointer}
+.link:hover{text-decoration:underline}
+.cform{display:grid;grid-template-columns:1fr 1fr;gap:8px;border-top:1px dashed var(--line);padding-top:8px}
+.cform label{display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var(--muted);min-width:0}
+.cform input,.cform select{font:14px var(--body);color:var(--fg);background:var(--bg2);border:1px solid var(--line);border-radius:7px;padding:7px 9px;min-width:0}
+.cform input:focus,.cform select:focus{outline:none;border-color:var(--accent)}
+.cform .wide{grid-column:1 / -1}
+.cform .actions{display:flex;justify-content:flex-end}
 .item .meta{display:block;font-size:11.5px;color:var(--muted);margin-top:1px}
+.item .meta.chosen{color:var(--ok)}
+.badge{flex:none;font-size:11px;font-weight:700;border-radius:999px;padding:1px 8px;border:1px solid currentColor}
+.badge[data-s="purchased"]{color:var(--warn)}
+.badge[data-s="installed"]{color:var(--ok)}
 .gen{font-size:12px;color:var(--muted)}
 dl.specs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:10px 0 0}
 .spec{background:var(--panel);padding:8px 10px;min-width:0}
@@ -119,8 +150,8 @@ form.add input:focus{outline:none;border-color:var(--accent)}
 .item:hover{background:var(--chip)}
 .item .t{flex:1;min-width:0;overflow-wrap:anywhere}
 select.status{flex:none;font:500 11.5px var(--body);color:var(--muted);background:transparent;border:1px solid var(--line);border-radius:999px;padding:2px 6px;cursor:pointer}
-select.status[data-s="planned"]{color:var(--warn);border-color:currentColor}
-select.status[data-s="purchased"],select.status[data-s="installed"]{color:var(--ok);border-color:currentColor}
+select.status[data-s="purchased"]{color:var(--warn);border-color:currentColor}
+select.status[data-s="installed"]{color:var(--ok);border-color:currentColor}
 .ex{font-size:10.5px;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:0 4px;margin-left:6px}
 .del{flex:none;width:26px;height:26px;border:none;background:none;color:var(--muted);border-radius:6px;cursor:pointer;font-size:16px;line-height:1}
 .del:hover{color:var(--danger);background:var(--chip)}
@@ -195,6 +226,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,.item:focus-visibl
   </aside>
 </div>
 <div class="toast" id="toast" hidden role="status"></div>
+<datalist id="brandList"></datalist>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>

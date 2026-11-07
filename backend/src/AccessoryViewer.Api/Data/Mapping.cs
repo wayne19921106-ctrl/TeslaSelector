@@ -70,15 +70,22 @@ public static class Mapping
     public static AccessoryCategoryDto? ToDto(this AccessoryCategory? c) =>
         c is null ? null : new AccessoryCategoryDto(c.Code, c.Name);
 
-    public static ProductDto ToDto(this Product p) =>
-        new(p.Id, p.Brand, p.Name, p.DisplayName, p.PriceTwd, p.Url);
+    public static BrandDto ToDto(this Brand b) =>
+        new(b.Id, b.Code, b.Name, b.LogoUrl, b.PromoCode, b.Description, b.Url);
+
+    public static ProductDto ToDto(this Product p) => new(
+        p.Id, p.Source,
+        p.Brand is null ? null : new BrandRefDto(p.Brand.Id, p.Brand.Code, p.Brand.Name, p.Brand.LogoUrl),
+        p.BrandLabel, p.Name, p.Model, p.SuggestedPriceTwd, p.Rating, p.Url, p.DisplayName);
 
     public static AccessoryDto ToDto(this BuildAccessory a) => new(
         a.Id, a.Part.Code, a.Part.Name, a.AssetId,
-        a.AccessoryTypeId, a.AccessoryType?.Name, a.AccessoryType?.Category.ToDto(),
-        a.ProductId, a.Product?.DisplayName,
-        a.Name, a.Status, a.PriceTwd, a.Note,
-        a.Position is null ? null : ToPositionDto(a.Position), a.IsExample, a.CreatedAt, a.UpdatedAt);
+        new AccessoryTypeRefDto(a.AccessoryType.Id, a.AccessoryType.Name,
+            a.AccessoryType.Source == CatalogSource.Custom, a.AccessoryType.Category.ToDto()),
+        a.Status, a.Note, a.Position is null ? null : ToPositionDto(a.Position), a.IsExample,
+        a.Products.OrderBy(x => x.CreatedAt).ThenBy(x => x.Id)
+            .Select(x => new CandidateDto(x.Id, x.IsSelected, x.Product.ToDto())).ToList(),
+        a.CreatedAt, a.UpdatedAt);
 
     public static BuildDto ToDto(this Build b) => new(
         b.Id, b.Name, b.TrimId, b.PaintColorId, b.CreatedAt, b.UpdatedAt,

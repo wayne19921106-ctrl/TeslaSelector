@@ -14,7 +14,7 @@ db/
   migrations/20261104000005_split_admin_member_schemas.sql 後台搬到 admin、會員搬到 member schema
   migrations/20261105000006_trim_style_variants.sql 版本外觀（Standard／Premium／Performance）
   migrations/20261105000007_style_variant_tweaks.sql
-  migrations/20261105000008_accessory_catalog.sql 車項 → 配件 → 產品、配件分類、車項清單重整
+  migrations/20261105000008_accessory_catalog.sql 車項清單重整、配件與品牌、內建／自訂產品、候選產品與選定
   seed/20261104000002_seed_model_y_juniper.sql 車型、規格、部位、參數化模型
 docs/api.md                                    API 規格
 backend/                                       .NET 8 Web API（EF Core + Npgsql）
@@ -49,7 +49,10 @@ tools/
 - **車型目錄**：`makes → vehicle_models → generations（改款世代）→ trims（年式 × 市場 × 版本）`。新增 2027 年式或下一代改款，只要新增 `generations` / `trims` 列。
 - **規格**：`trim_specs`（1:1）與 `tire_specs`（前後軸）。`sources` 欄位記錄每個欄位的資料來源與是否已核對；`verified_at` 有值才代表全部與官網核對完成。
 - **模型資源**：`model_assets.asset_type` 分 `parametric`（前端依規格生成）與 `gltf`（Supabase Storage 的 .glb）；`tier` 分 `free` / `premium`。第一階段 premium 只回傳中繼資料（`locked: true`）。
-- **配件目錄（車項 → 配件 → 產品）**：`parts`（車項，47 項）→ `part_accessory_types`（車項可裝的配件）→ `accessory_types`（配件，例如隔熱紙）；產品 `products` 透過 `part_accessory_products` 掛在「車項 × 配件」底下，所以同一產品可用於多個車項。配件另有分類 `accessory_categories`（外觀、內裝、安全、操控）。配置清單的每筆配件記錄車項、配件與產品，目錄裡沒有的可以自訂名稱。
+- **配件目錄（車項 → 配件 → 產品）**：`parts`（車項，47 項）→ `part_accessory_types`（車項可裝的內建配件）→ `accessory_types`（配件，例如隔熱紙；另有分類 `accessory_categories`：外觀、內裝、安全、操控）。產品 `products` 關聯品牌 `brands` 與配件，欄位有名稱、型號、建議售價、推薦指數（1–5），並以 `part_accessory_products` 掛在「車項 × 配件」底下。
+- **品牌**：`brands` 記錄序號、品牌（英文，唯一、不分大小寫）、名稱、Logo、推廣碼、品牌介紹、網址。
+- **內建與自訂**：配件與產品都以 `source` 區分 `builtin`（內建）與 `custom`（使用者自訂）。自訂配件與自訂產品屬於某份配置清單（`owner_build_id`），接上會員後可改歸屬會員（`owner_member_id`）。自訂產品可選既有品牌，或直接輸入品牌文字。
+- **配置清單**：`build_accessories` 是某車項下的一個配件（同一車項同一配件一筆）；`build_accessory_products` 是它的候選產品，可多筆、最多選定一筆（唯一索引保證）。`status` 只有選定產品後才能設為 `purchased`（已購買）或 `installed`（已安裝），取消或更換選定產品時由 trigger 自動清空。
 - **部位辨識**：`asset_part_mappings` 用座標範圍（zone）或物件名稱（mesh）對應到 `parts`，一個車項可以有多個對應（例如車身玻璃 = 左右側窗、後照鏡 = 左右兩面）。沒有對應的車項（底盤、門檻、車頂）只能從清單選。日後換成 .glb 模型時改用 mesh 對應，前端互動不變。
 - **開啟件**：`asset_openings` 記錄鉸鏈、旋轉軸、角度與帶動的零件。
 - **版本外觀**：`trims.style_variant` 指定版本使用哪一組外觀（台灣 2026 年式：後輪驅動 = standard、Long Range = premium、Performance = performance），前端從 `model_assets.params.variants` 取出燈具、前保桿、擾流板與輪框參數。燈具與飾條以射線貼合車身表面生成，參數只需要高度與左右範圍。外觀參數是參考 Tesla 公開的外觀渲染圖目視估計，網站本身不使用 Tesla 的圖片。

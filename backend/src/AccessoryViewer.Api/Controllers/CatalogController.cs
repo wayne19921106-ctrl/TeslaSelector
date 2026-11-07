@@ -114,7 +114,7 @@ public class CatalogController(AppDbContext db) : ControllerBase
     {
         var parts = await db.Parts.AsNoTracking()
             .Include(p => p.AccessoryTypes).ThenInclude(pa => pa.AccessoryType).ThenInclude(t => t.Category)
-            .Include(p => p.AccessoryTypes).ThenInclude(pa => pa.Products).ThenInclude(pp => pp.Product)
+            .Include(p => p.AccessoryTypes).ThenInclude(pa => pa.Products).ThenInclude(pp => pp.Product).ThenInclude(pr => pr.Brand)
             .AsSplitQuery()
             .OrderBy(p => p.SortOrder)
             .ToListAsync(ct);
@@ -122,18 +122,28 @@ public class CatalogController(AppDbContext db) : ControllerBase
         return parts.Select(p => new PartDto(
                 p.Code, p.Name, p.Category,
                 p.AccessoryTypes
-                    .Where(pa => pa.AccessoryType.IsActive)
+                    .Where(pa => pa.AccessoryType.IsActive && pa.AccessoryType.Source == CatalogSource.Builtin)
                     .OrderBy(pa => pa.SortOrder).ThenBy(pa => pa.AccessoryType.SortOrder)
                     .Select(pa => new PartAccessoryDto(
                         pa.AccessoryType.Id, pa.AccessoryType.Name, pa.AccessoryType.Category.ToDto(),
                         pa.Products
-                            .Where(pp => pp.Product.IsActive)
+                            .Where(pp => pp.Product.IsActive && pp.Product.Source == CatalogSource.Builtin)
                             .OrderBy(pp => pp.SortOrder).ThenBy(pp => pp.Product.SortOrder)
                             .Select(pp => pp.Product.ToDto())
                             .ToList()))
                     .ToList()))
             .ToList();
     }
+
+    /// <summary>品牌清單（自訂產品可選既有品牌）。</summary>
+    [HttpGet("brands")]
+    public async Task<ActionResult<IReadOnlyList<BrandDto>>> GetBrands(CancellationToken ct) =>
+        (await db.Brands.AsNoTracking()
+            .Where(b => b.IsActive)
+            .OrderBy(b => b.SortOrder).ThenBy(b => b.Code)
+            .ToListAsync(ct))
+        .Select(b => b.ToDto())
+        .ToList();
 
     /// <summary>配件分類：外觀、內裝、安全、操控。</summary>
     [HttpGet("accessory-categories")]

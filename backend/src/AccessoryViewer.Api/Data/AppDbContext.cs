@@ -20,7 +20,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<AccessoryCategory> AccessoryCategories => Set<AccessoryCategory>();
     public DbSet<AccessoryType> AccessoryTypes => Set<AccessoryType>();
     public DbSet<PartAccessoryType> PartAccessoryTypes => Set<PartAccessoryType>();
+    public DbSet<Brand> Brands => Set<Brand>();
     public DbSet<Product> Products => Set<Product>();
+    public DbSet<BuildAccessoryProduct> BuildAccessoryProducts => Set<BuildAccessoryProduct>();
     public DbSet<PartAccessoryProduct> PartAccessoryProducts => Set<PartAccessoryProduct>();
     public DbSet<AssetPartMapping> AssetPartMappings => Set<AssetPartMapping>();
     public DbSet<AssetOpening> AssetOpenings => Set<AssetOpening>();
@@ -90,10 +92,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasOne(x => x.AccessoryType).WithMany().HasForeignKey(x => x.AccessoryTypeId);
             e.HasMany(x => x.Products).WithOne().HasForeignKey(x => x.PartAccessoryTypeId);
         });
+        b.Entity<Brand>().ToTable("brands");
         b.Entity<Product>(e =>
         {
             e.ToTable("products");
             e.Ignore(x => x.DisplayName);
+            e.Ignore(x => x.BrandLabel);
+            e.HasOne(x => x.Brand).WithMany().HasForeignKey(x => x.BrandId);
         });
         b.Entity<PartAccessoryProduct>(e =>
         {
@@ -132,6 +137,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.Position).HasColumnType("jsonb");
             e.HasOne(x => x.Part).WithMany().HasForeignKey(x => x.PartId);
             e.HasOne(x => x.AccessoryType).WithMany().HasForeignKey(x => x.AccessoryTypeId);
+            e.HasMany(x => x.Products).WithOne().HasForeignKey(x => x.BuildAccessoryId);
+        });
+        b.Entity<BuildAccessoryProduct>(e =>
+        {
+            e.ToTable("build_accessory_products");
+            e.Property(x => x.Id).HasDefaultValueSql("gen_random_uuid()");
+            e.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
             e.HasOne(x => x.Product).WithMany().HasForeignKey(x => x.ProductId);
         });
     }
