@@ -55,6 +55,11 @@ jobs:
           context: backend
           load: true
           tags: teslaselector-api:ci
+          # 讓 GHCR 把套件連到這個 repo（首次發佈時 GITHUB_TOKEN 才有寫入權）
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.description=TeslaSelector accessory viewer API
+            org.opencontainers.image.revision=${{ github.sha }}
 
       - name: 啟動容器並跑冒煙測試
         run: |
