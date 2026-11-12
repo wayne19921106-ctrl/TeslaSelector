@@ -1,0 +1,89 @@
+# 後端容器映像：編譯 → 在 PostgreSQL 上套用全部 migration → 啟動容器跑 API 冒煙測試 → 推到 GitHub Container Registry
+name: Backend image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "db/**"
+      - "tools/apply-migrations.sh"
+      - "tools/smoke-test.sh"
+      - ".github/workflows/backend-image.yml"
+  pull_request:
+    paths: ["backend/**", "db/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/teslaselector-api
+
+jobs:
+  build-test-push:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: viewer_ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: 編譯（Release，警告不中斷）
+        run: dotnet build backend/AccessoryViewer.sln -c Release
+
+      - name: 套用 migration 與 seed
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/viewer_ci
+        run: tools/apply-migrations.sh --with-stubs
+
+      - name: 建置映像檔
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          load: true
+          tags: teslaselector-api:ci
+
+      - name: 啟動容器並跑冒煙測試
+        run: |
+          docker run -d --name api --network host \
+            -e PORT=8080 \
+            -e "ConnectionStrings__Viewer=Host=localhost;Port=5432;Database=viewer_ci;Username=postgres;Password=postgres" \
+            teslaselector-api:ci
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8080/health && break
+            sleep 1
+          done
+          API=http://localhost:8080 tools/smoke-test.sh
+
+      - name: 容器日誌
+        if: always()
+        run: docker logs api 2>&1 | tail -200 || true
+
+      - name: 登入 GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 推送映像檔
+        if: github.event_name != 'pull_request'
+        run: |
+          docker tag teslaselector-api:ci "$IMAGE:sha-${GITHUB_SHA::7}"
+          docker tag teslaselector-api:ci "$IMAGE:latest"
+          docker push "$IMAGE:sha-${GITHUB_SHA::7}"
+          docker push "$IMAGE:latest"

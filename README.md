@@ -103,6 +103,34 @@ npx serve frontend -l 5173
 
 後端部署後：把正式 API 網址填入 `config.js` 的 `apiBase`，並把 `https://<帳號>.github.io` 加進後端的 `Cors:AllowedOrigins`。
 
+## 部署後端（容器）
+
+`backend/Dockerfile` 會把 API 包成容器映像，可放到任何能跑容器的雲端服務。`.github/workflows/backend-image.yml` 在 `main` 的 `backend/` 或 `db/` 有變更時自動執行：
+
+1. 編譯 → 在 PostgreSQL 16 上套用全部 migration（`tools/apply-migrations.sh --with-stubs`）
+2. 建置映像、啟動容器、跑 API 冒煙測試（`tools/smoke-test.sh`）
+3. 通過後推到 `ghcr.io/<帳號>/teslaselector-api`，標籤為 `latest` 與 `sha-<commit>`
+
+> GHCR 套件預設是 private。雲端平台若要直接拉映像，請到 GitHub 的 **Packages → teslaselector-api → Package settings** 改成 public，或在平台設定 GHCR 的存取權杖。
+
+容器需要的環境變數：
+
+| 變數 | 範例 | 說明 |
+|---|---|---|
+| `ConnectionStrings__Viewer` | `Host=aws-0-<region>.pooler.supabase.com;Port=5432;Database=postgres;Username=postgres.<project-ref>;Password=…;SSL Mode=Require;Trust Server Certificate=true` | Supabase **Session pooler**（IPv4 可用）。請放在平台的 secret，不要寫進 repo |
+| `Cors__AllowedOrigins__0` | `https://wayne19921106-ctrl.github.io` | 前端網址，可再加 `__1`、`__2` |
+| `PORT` | `8080` | 平台有指定時會自動帶入；未設時容器聽 8080 |
+
+本機試跑：
+
+```bash
+docker build -t teslaselector-api backend
+docker run --rm -p 8080:8080 -e "ConnectionStrings__Viewer=…" teslaselector-api
+curl http://localhost:8080/health
+```
+
+可選的平台：Google Cloud Run、Azure Container Apps、Render、Fly.io，或自己的 VPS（Docker + Caddy／Nginx 反向代理與 HTTPS）。部署後把 API 網址填入前端 `config.js` 的 `apiBase`。
+
 ## 更新示範資料與預覽檔
 
 ```bash
@@ -124,7 +152,7 @@ seed 中的規格來自 U-CAR 與 EVSpecifications（歐規），`verified = fal
 
 - ✅ migration 與 seed 已在 PostgreSQL 16 實際執行。
 - ✅ 前端在無頭 Chromium 測過：載入、三個版本切換、點擊辨識部位、新增配件、開關車門。
-- ⚠️ 後端在開發環境無法下載 NuGet 套件，只用介面替身做過型別檢查，**尚未實際連線執行**。第一次 `dotnet run` 時請留意 EF Core 對應問題（例如 jsonb、`text[]`、trigger 更新的 `updated_at`）。
+- ✅ 後端由 GitHub Actions（`backend-image.yml`）實際編譯、以容器連 PostgreSQL 跑 API 冒煙測試。
 
 ## 下一步
 

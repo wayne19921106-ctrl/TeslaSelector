@@ -3,6 +3,10 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// 雲端平台（Cloud Run、Render 等）以 PORT 環境變數指定埠號；沒有時用 ASPNETCORE_HTTP_PORTS（容器預設 8080）
+var port = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrWhiteSpace(port)) builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+
 // 連線字串：appsettings / 環境變數 ConnectionStrings__Viewer / dotnet user-secrets
 var connectionString = builder.Configuration.GetConnectionString("Viewer");
 if (string.IsNullOrWhiteSpace(connectionString))
