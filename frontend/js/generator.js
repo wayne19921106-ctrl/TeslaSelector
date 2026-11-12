@@ -26,6 +26,18 @@
     return s;
   }
 
+  /** 空力輪框葉片：從半徑 r0 掃到 r1、掃角 sweepDeg、寬度約 width 的弧形片（輪面 XY 平面）。 */
+  function aeroBlade(THREE, r0, r1, sweepDeg, width) {
+    const sweep = (sweepDeg * Math.PI) / 180, N = 14, lead = [], trail = [];
+    for (let i = 0; i <= N; i++) {
+      const t = i / N, r = r0 + (r1 - r0) * t, a = sweep * t * (2 - t);   // 外圈掃得較平
+      const wa = (width * (1 - 0.45 * t)) / r;                           // 往外漸細
+      lead.push(new THREE.Vector2(r * Math.cos(a), r * Math.sin(a)));
+      trail.push(new THREE.Vector2(r * Math.cos(a + wa), r * Math.sin(a + wa)));
+    }
+    return new THREE.Shape(lead.concat(trail.reverse()));
+  }
+
   /** 擠出參考幾何並套用收窄，參考座標另存為 aRef 屬性。 */
   function refShell(THREE, conf) {
     const e = conf.extrude;
@@ -37,13 +49,27 @@
     g.deleteAttribute('normal'); g.deleteAttribute('uv');
     if (THREE.BufferGeometryUtils) g = THREE.BufferGeometryUtils.mergeVertices(g, 1e-4);
     const p = g.attributes.position;
+    // 收窄係數 k(x, y)：側面 z = ±c·k(x, y)
+    const kAt = (x, y) => {
+      let k = 1;
+      for (const t of conf.taper || []) if (t.axis !== 'z') k *= 1 - t.amount * ss(t.from, t.to, t.axis === 'x' ? x : y);
+      return k;
+    };
+    // 側面（擠出的兩個端面）是一大片細長三角形，平滑法向量會把輪拱邊緣的傾斜帶進來，出現斜向亮紋。
+    // 端面頂點改用曲面的解析法向量（倒角從端面切線方向開始，所以交界處不會出現折線）。
+    const c = e.depth / 2 + e.bevel_thickness, capN = new Float32Array(p.count * 3), h = 1e-4;
     for (let i = 0; i < p.count; i++) {
       const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
-      let k = 1;
-      for (const t of conf.taper || []) k *= 1 - t.amount * ss(t.from, t.to, t.axis === 'x' ? x : t.axis === 'y' ? y : z);
+      const k = kAt(x, y);
+      if (Math.abs(Math.abs(z) - c) < 1e-5) {
+        const s = Math.sign(z);
+        // 曲面 z = s·c·k(x, y) 的外法向量：(-c·∂k/∂x, -c·∂k/∂y, s)
+        capN.set([-c * (kAt(x + h, y) - kAt(x - h, y)) / (2 * h), -c * (kAt(x, y + h) - kAt(x, y - h)) / (2 * h), s], i * 3);
+      }
       p.setXYZ(i, x, y, z * k);
     }
     g.setAttribute('aRef', new THREE.BufferAttribute(Float32Array.from(p.array), 3));
+    g.userData.capNormals = capN;
     g.computeBoundingBox();
     return g;
   }
@@ -79,6 +105,19 @@
     }
     p.needsUpdate = true;
     g.computeVertexNormals();
+    // 端面頂點：參考座標的法向量經映射（各軸縮放）後，以反轉置換算 = 各分量除以該軸的縮放率
+    const capN = g.userData.capNormals, ref = g.attributes.aRef, nrm = g.attributes.normal;
+    if (capN) {
+      const ky = map.fy(1) - map.fy(0), v = new THREE.Vector3();
+      for (let i = 0; i < nrm.count; i++) {
+        const nz = capN[i * 3 + 2];
+        if (!nz) continue;
+        const x = ref.getX(i), dfx = (map.fx(x + 1e-4) - map.fx(x - 1e-4)) / 2e-4;
+        v.set(capN[i * 3] / dfx, capN[i * 3 + 1] / ky, nz / map.kz).normalize();
+        nrm.setXYZ(i, v.x, v.y, v.z);
+      }
+      nrm.needsUpdate = true;
+    }
     g.computeBoundingBox(); g.computeBoundingSphere();
   }
 
@@ -251,6 +290,65 @@
       }
       return pts.length >= 2 ? new THREE.CatmullRomCurve3(pts) : null;
     }
+    /**
+     * 貼合車身表面的薄片（飾板、水箱罩、燈殼）。face：front / rear 時 u = z、v = y；
+     * left / right 時 u = x、v = y。射線打不到的欄位會略過，所以範圍略超出車身也不會壞。
+     */
+    const outerX = params.reference.axle_x + 0.5;   // 輪拱以外才算車頭／車尾面
+    function surfacePatch(face, u, v, lift, nu = 40, nv = 4) {
+      const cols = [];
+      for (let i = 0; i <= nu; i++) {
+        const uu = u[0] + ((u[1] - u[0]) * i) / nu;
+        let col = [];
+        for (let j = 0; j <= nv; j++) {
+          const vv = v[0] + ((v[1] - v[0]) * j) / nv;
+          let o, d;
+          if (face === 'front' || face === 'rear') {
+            const e = face === 'front' ? 1 : -1;
+            o = map.fwd(e * 4, vv, uu); d = new THREE.Vector3(-e, 0, 0);
+          } else {
+            const s = face === 'right' ? 1 : -1;
+            o = map.fwd(uu, vv, s * 4); d = new THREE.Vector3(0, 0, -s);
+          }
+          const h = hitBody(o, d);
+          // 只接受真的打在這一面的點：射線擦過側面（法向量幾乎垂直於射線），或從收窄的車尾旁穿過、
+          // 打到前輪拱內側，都不算，否則薄片會被拉成橫跨車身的長條
+          let ok = h && -h.n.dot(d) >= 0.35;
+          if (ok) {
+            const r = map.inv(h.p);
+            ok = face === 'front' || face === 'rear' ? Math.abs(r.x) > outerX : Math.abs(r.z) > 0.6;
+          }
+          if (!ok) { col = null; break; }
+          col.push(h.p.addScaledVector(h.n, lift));
+        }
+        cols.push(col);
+      }
+      const pos = [], idx = [], base = [];
+      cols.forEach((c, i) => { if (c) { base[i] = pos.length / 3; for (const p of c) pos.push(p.x, p.y, p.z); } });
+      for (let i = 0; i < nu; i++) {
+        if (!cols[i] || !cols[i + 1]) continue;
+        for (let j = 0; j < nv; j++) {
+          const a = base[i] + j, b = base[i + 1] + j;
+          idx.push(a, b, a + 1, b, b + 1, a + 1);
+        }
+      }
+      if (!idx.length) return null;
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      g.setIndex(idx); g.computeVertexNormals();
+      return g;
+    }
+    /** 薄片零件：key 有對應車項時可點選；沒有對應時不攔截點擊，點到的是底下車身的部位範圍。 */
+    function panel(key, face, u, v, mat, lift = 0.004) {
+      const g = surfacePatch(face, u, v, lift);
+      if (!g) return null;
+      mat.side = THREE.DoubleSide;
+      mat.polygonOffset = true; mat.polygonOffsetFactor = -2; mat.polygonOffsetUnits = -2;
+      const m = key ? partMesh(key, g, mat) : new THREE.Mesh(g, mat);
+      if (!key) disposables.push(g, mat);
+      m.castShadow = false; m.receiveShadow = true;
+      return m;
+    }
     /** 沿表面的管狀零件（燈條、進氣口），兩端加圓帽。 */
     function strip(key, end, conf, mat, mirror) {
       const ranges = mirror ? [[conf.z[0], conf.z[1]], [-conf.z[1], -conf.z[0]]] : [conf.z];
@@ -271,7 +369,7 @@
     {
       const L = params.lights || {};
       const lightW = () => std(0x000000, { emissive: 0xffffff, emissiveIntensity: 1.4 });
-      const headMat = () => std(0x0b0d10, { emissive: 0xdfe8ff, emissiveIntensity: 0.9, metalness: 0.5, roughness: 0.2 });
+      const headMat = () => std(0x0b0d10, { emissive: 0x9aa6b8, emissiveIntensity: 0.12, metalness: 0.5, roughness: 0.18 });
       const trimMat = () => std(0x111316, { roughness: 0.6, metalness: 0.15 });
 
       // 前燈條（Premium / Performance）：深色燈殼包住細發光條，淺色車漆上也看得到
@@ -280,18 +378,60 @@
         strip('lights-front', 1, fb, std(0x0b0c0e, { roughness: 0.3, metalness: 0.4 })).forEach((g) => group.add(g));
         strip('lights-front', 1, { ...fb, r: fb.r * 0.45, lift: fb.r * 0.95 }, lightW()).forEach((g) => group.add(g));
       }
-      // 主頭燈：Standard 在引擎蓋前緣兩側；Premium / Performance 在前保桿兩側
-      if (V.headlights) strip('lights-front', 1, V.headlights, headMat(), true).forEach((g) => group.add(g));
-      // 前保桿進氣口與 Performance 導流口
-      if (V.lower_intake) strip('front-bumper-trim', 1, V.lower_intake, trimMat()).forEach((g) => group.add(g));
-      if (V.bumper_vents) strip('front-bumper-trim', 1, V.bumper_vents, trimMat(), true).forEach((g) => group.add(g));
-      // 尾燈條（隨尾門開啟）
-      if (L.rear_bar) {
-        const rMat = std(0x200000, { emissive: 0xd0101a, emissiveIntensity: 1.2 });
-        strip('lights-rear', -1, L.rear_bar, rMat).forEach((g) => attachTo(g, openingOf('lights-rear')));
+      // 深色飾件：前下巴、後保桿下半部、左右側裙（params.dark_trim 可覆寫範圍）
+      const T = params.dark_trim || {};
+      const satin = () => std(0x17191c, { roughness: 0.62, metalness: 0.1 });
+      const gloss = () => std(0x08090b, { roughness: 0.28, metalness: 0.35 });
+      const fl = T.front_lower || { y: [0.225, 0.29], z: [-0.74, 0.74] };
+      const rl = T.rear_lower || { y: [0.225, 0.44], z: [-0.86, 0.86] };
+      const sk = T.skirts || { x: [-0.97, 0.97], y: [0.225, 0.34] };
+      for (const m of [
+        panel(null, 'front', fl.z, fl.y, satin()),
+        panel(null, 'rear', rl.z, rl.y, satin()),
+        panel(null, 'left', sk.x, sk.y, satin()),
+        panel(null, 'right', sk.x, sk.y, satin())
+      ]) if (m) group.add(m);
+
+      // 主頭燈：深色燈殼 + 上緣細日行燈。Standard 在引擎蓋前緣兩側；Premium / Performance 在前保桿兩側
+      if (V.headlights) {
+        const hl = V.headlights;
+        for (const z of [[hl.z[0], hl.z[1]], [-hl.z[1], -hl.z[0]]]) {
+          const m = panel('lights-front', 'front', z, [hl.y - hl.r, hl.y + hl.r], headMat(), 0.006);
+          if (m) group.add(m);
+        }
+        strip('lights-front', 1, { y: hl.y + hl.r * 0.55, z: [hl.z[0] + 0.03, hl.z[1] - 0.02], r: 0.0045, lift: 0.009 }, lightW(), true)
+          .forEach((g) => group.add(g));
       }
-      // 後擴散器
-      strip('rear-diffuser', -1, { y: 0.30, z: [-0.62, 0.62], r: 0.045 }, trimMat()).forEach((g) => group.add(g));
+      // 前保桿水箱罩與 Performance 兩側導流口：亮黑薄片（參數 y ± r 為高度範圍）
+      if (V.lower_intake) {
+        const li = V.lower_intake;
+        const m = panel(null, 'front', li.z, [li.y - li.r, li.y + li.r], gloss(), 0.006);
+        if (m) group.add(m);
+      }
+      if (V.bumper_vents) {
+        const bv = V.bumper_vents;
+        for (const z of [[bv.z[0], bv.z[1]], [-bv.z[1], -bv.z[0]]]) {
+          const m = panel(null, 'front', z, [bv.y - bv.r, bv.y + bv.r], gloss(), 0.006);
+          if (m) group.add(m);
+        }
+      }
+      // 尾燈條與兩端燈組（隨尾門開啟）
+      if (L.rear_bar) {
+        const rb = L.rear_bar;
+        const rMat = () => std(0x200000, { emissive: 0xd0101a, emissiveIntensity: 1.2 });
+        strip('lights-rear', -1, rb, rMat()).forEach((g) => attachTo(g, openingOf('lights-rear')));
+        const lampMat = () => std(0x2a0406, { emissive: 0x7a0a10, emissiveIntensity: 0.55, roughness: 0.25, metalness: 0.3 });
+        const lz = rb.corner_z || [0.6, 0.8];
+        for (const z of [[lz[0], lz[1]], [-lz[1], -lz[0]]]) {
+          const m = panel('lights-rear', 'rear', z, [rb.y - 0.075, rb.y - 0.01], lampMat(), 0.006);
+          if (m) attachTo(m, openingOf('lights-rear'));
+        }
+        // 後保桿反光片
+        for (const z of [[0.6, 0.72], [-0.72, -0.6]]) {
+          const m = panel(null, 'rear', z, [rl.y[1] - 0.05, rl.y[1] - 0.03], std(0x300000, { emissive: 0x500006, emissiveIntensity: 0.6 }), 0.008);
+          if (m) group.add(m);
+        }
+      }
       // Performance 尾門擾流板
       if (V.rear_spoiler) {
         const sp = V.rear_spoiler;
@@ -364,11 +504,26 @@
       const disc = partMesh('aero-cover', new THREE.CylinderGeometry(rimR + 0.001, rimR + 0.001, 0.04, 48), darkMat, null);
       disc.position.z = side * (hw - 0.05); disc.rotation.x = Math.PI / 2; w.add(disc);
       const lip = partMesh('rim', new THREE.TorusGeometry(rimR - 0.01, 0.012, 8, 64), rimMat, null); lip.position.z = side * (hw - 0.025); w.add(lip);
-      const spokes = wheelV.spokes || (t.rimDiameterIn >= 21 ? 10 : 5);
-      for (let i = 0; i < spokes; i++) {
-        const a = (i / spokes) * Math.PI * 2;
-        const sp = partMesh('rim', box(rimR * 0.82, spokes > 5 ? 0.026 : 0.05, 0.03), rimMat, null);
-        sp.position.set(Math.cos(a) * rimR * 0.52, Math.sin(a) * rimR * 0.52, side * (hw - 0.025)); sp.rotation.z = a; w.add(sp);
+      if (wheelV.style === 'aero') {
+        // 空力輪框：深色輪面 + 弧形葉片。左輪是同一個輪框繞垂直軸轉 180°，從車外看兩側一致
+        const n = wheelV.blades || 5;
+        const bladeMat = std(wheelV.blade_color || 0x4a4f55, { metalness: 0.25, roughness: 0.45 });
+        const shape = aeroBlade(THREE, 0.07, rimR * 0.93, wheelV.sweep_deg || 48, rimR * 0.2);
+        const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.014, bevelEnabled: true, bevelThickness: 0.004, bevelSize: 0.004, bevelSegments: 2, curveSegments: 6 });
+        for (let i = 0; i < n; i++) {
+          const b = partMesh('aero-cover', geo, bladeMat, null);
+          b.rotation.z = (i / n) * Math.PI * 2;
+          b.scale.set(side, 1, side);   // 左側：x、z 反向 = 繞 y 軸轉 180°，葉片朝外擠出
+          b.position.z = side * (hw - 0.03);
+          w.add(b);
+        }
+      } else {
+        const spokes = wheelV.spokes || (t.rimDiameterIn >= 21 ? 10 : 5);
+        for (let i = 0; i < spokes; i++) {
+          const a = (i / spokes) * Math.PI * 2;
+          const sp = partMesh('rim', box(rimR * 0.82, spokes > 5 ? 0.026 : 0.05, 0.03), rimMat, null);
+          sp.position.set(Math.cos(a) * rimR * 0.52, Math.sin(a) * rimR * 0.52, side * (hw - 0.025)); sp.rotation.z = a; w.add(sp);
+        }
       }
       const hub = partMesh('aero-cover', new THREE.CylinderGeometry(0.055, 0.055, 0.04, 24), darkMat, null);
       hub.position.z = side * (hw - 0.015); hub.rotation.x = Math.PI / 2; w.add(hub);
