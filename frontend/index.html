@@ -3,65 +3,111 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#e7eaee">
 <title>Model Y 配件檢視器</title>
+<script src="js/theme.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600&family=Noto+Sans+TC:wght@400;500;700&display=swap">
 <style>
-/* Layout: full-height 3D stage on the left, working panel on the right; stacks stage-over-panel on phones */
+/* Layout（方案 B）：3D 滿版；頂部列放版本分段鈕與導購按鈕。
+   ≥1025px：右側浮動面板；≤1024px：底部抽屜，可展開／收合。 */
 :root{
   --bg:#e7eaee; --bg2:#f6f7f9; --panel:#fbfbfc; --fg:#14171b; --muted:#5b646e; --line:#d6dbe0;
-  --chip:#edf0f3; --accent:#c27400; --accent-soft:#f6e3c2; --accent-ink:#1b1205; --danger:#b3261e;
-  --ok:#1f7a4d; --ok-ink:#ffffff; --ok-soft:#e3f2e9; --warn:#9a6700;
+  --chip:#edf0f3; --seg:#dde1e6; --accent:#c27400; --accent-soft:#f6e3c2; --accent-ink:#1b1205; --danger:#b3261e;
+  --ok:#1f7a4d; --ok-ink:#ffffff; --ok-soft:#e3f2e9; --warn:#8a5c00; --shadow:rgba(20,23,27,.10);
+  --cta-bg:#14171b; --cta-fg:#ffffff; --ad1:#eef1f4; --ad2:#e5e9ed; --adline:#8e98a2; --adink:#4a535c;
   --display:"Chakra Petch","Noto Sans TC",system-ui,sans-serif;
   --body:"Noto Sans TC",system-ui,-apple-system,"PingFang TC","Microsoft JhengHei",sans-serif;
+  --top:68px; --peek:46dvh; --gut:16px;
   color-scheme:light;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --bg:#0d1013; --bg2:#1c2228; --panel:#13171b; --fg:#e7ebee; --muted:#8c97a2; --line:#262d34;
-  --chip:#1c2228; --accent:#f2b33d; --accent-soft:#3a2c12; --accent-ink:#1b1205; --danger:#ff8a80;
-  --ok:#5fd49a; --ok-ink:#06140c; --ok-soft:#14291d; --warn:#f2c14e; color-scheme:dark}}
+  --bg:#0d1013; --bg2:#1c2228; --panel:#13171b; --fg:#e7ebee; --muted:#9aa4ae; --line:#2b333b;
+  --chip:#1c2228; --seg:#1c2228; --accent:#f2b33d; --accent-soft:#3a2c12; --accent-ink:#1b1205; --danger:#ff8a80;
+  --ok:#5fd49a; --ok-ink:#06140c; --ok-soft:#14291d; --warn:#f2c14e; --shadow:rgba(0,0,0,.45);
+  --cta-bg:#e7ebee; --cta-fg:#0d1013; --ad1:#171c21; --ad2:#1d2329; --adline:#5b646e; --adink:#aeb7c0; color-scheme:dark}}
 :root[data-theme="dark"]{
-  --bg:#0d1013; --bg2:#1c2228; --panel:#13171b; --fg:#e7ebee; --muted:#8c97a2; --line:#262d34;
-  --chip:#1c2228; --accent:#f2b33d; --accent-soft:#3a2c12; --accent-ink:#1b1205; --danger:#ff8a80;
-  --ok:#5fd49a; --ok-ink:#06140c; --ok-soft:#14291d; --warn:#f2c14e; color-scheme:dark}
-:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+  --bg:#0d1013; --bg2:#1c2228; --panel:#13171b; --fg:#e7ebee; --muted:#9aa4ae; --line:#2b333b;
+  --chip:#1c2228; --seg:#1c2228; --accent:#f2b33d; --accent-soft:#3a2c12; --accent-ink:#1b1205; --danger:#ff8a80;
+  --ok:#5fd49a; --ok-ink:#06140c; --ok-soft:#14291d; --warn:#f2c14e; --shadow:rgba(0,0,0,.45);
+  --cta-bg:#e7ebee; --cta-fg:#0d1013; --ad1:#171c21; --ad2:#1d2329; --adline:#5b646e; --adink:#aeb7c0; color-scheme:dark}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
-body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:14px;overflow:hidden}
+body{background:radial-gradient(ellipse 60% 60% at 36% 52%,var(--bg2),var(--bg)) fixed,var(--bg);color:var(--fg);font-family:var(--body);font-size:14px;overflow:hidden}
 body.busy{cursor:progress}
 [hidden]{display:none!important}
-.app{display:grid;grid-template-columns:minmax(0,1fr) 380px;height:100%}
-.stage{position:relative;min-width:0;overflow:hidden;background:radial-gradient(ellipse 70% 60% at 50% 58%,var(--bg2),var(--bg))}
+button{font-family:inherit}
+
+/* ---------- Top bar ---------- */
+.topbar{position:fixed;left:0;right:0;top:0;z-index:5;height:var(--top);display:flex;align-items:center;gap:18px;
+  padding:0 var(--gut);padding-top:env(safe-area-inset-top,0px);pointer-events:none}
+.topbar>*{pointer-events:auto}
+.brandbox{display:flex;align-items:baseline;gap:10px;min-width:0}
+.brand{font-family:var(--display);font-weight:600;font-size:22px;letter-spacing:.04em;white-space:nowrap}
+.brandbox .sub{color:var(--muted);font-size:13px;white-space:nowrap}
+.seg{display:flex;padding:3px;background:var(--seg);border-radius:10px;gap:2px;min-width:0}
+.seg button{height:36px;padding:0 16px;border:none;border-radius:8px;background:transparent;font:600 13.5px var(--body);color:var(--muted);cursor:pointer;white-space:nowrap}
+.seg button:hover{color:var(--fg)}
+.seg button[aria-checked="true"]{background:var(--panel);color:var(--fg);box-shadow:0 1px 3px var(--shadow)}
+.tools{margin-left:auto;display:flex;align-items:center;gap:8px}
+.icon-btn{display:inline-grid;place-items:center;width:40px;height:40px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--fg);cursor:pointer;font:700 13px var(--body)}
+.icon-btn:hover{border-color:var(--accent)}
+.icon-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+#themeBtn svg{display:none}
+#themeBtn[data-mode="auto"] .i-auto,#themeBtn[data-mode="light"] .i-light,#themeBtn[data-mode="dark"] .i-dark{display:block}
+.refs{display:flex;gap:8px}
+.cta{display:inline-flex;align-items:center;gap:7px;height:40px;padding:0 15px;border-radius:8px;font-weight:700;font-size:13.5px;text-decoration:none;white-space:nowrap}
+.cta svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.cta.dark{background:var(--cta-bg);color:var(--cta-fg)}
+.cta.line{background:var(--panel);color:var(--fg);border:1px solid var(--line)}
+.cta:hover{filter:brightness(1.08)}
+.cta.line:hover{border-color:var(--accent)}
+.cta .s{display:none}
+
+/* ---------- Stage ---------- */
+.stage{position:fixed;left:0;top:0;bottom:0;right:432px;overflow:hidden}
 .stage canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
 .stage canvas:active{cursor:grabbing}
-.hud{position:absolute;left:16px;top:14px;display:flex;flex-direction:column;gap:2px;pointer-events:none}
-.hud .brand{font-family:var(--display);font-weight:600;font-size:22px;letter-spacing:.04em}
-.hud .hint{color:var(--muted);font-size:12.5px}
-.mode{position:absolute;right:16px;top:14px;font-size:11.5px;color:var(--warn);border:1px solid currentColor;border-radius:999px;padding:2px 9px;background:var(--panel)}
-.stagefoot{position:absolute;left:16px;right:16px;bottom:12px;display:flex;flex-direction:column;align-items:flex-start;gap:8px;pointer-events:none}
-.views{display:flex;gap:6px;flex-wrap:wrap;pointer-events:auto}
-.views button{font:500 12.5px var(--body);color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 11px;cursor:pointer}
+.stagehead{position:absolute;left:var(--gut);top:calc(var(--top) + 8px);display:flex;flex-direction:column;align-items:flex-start;gap:3px;pointer-events:none;max-width:calc(100% - 2*var(--gut))}
+.stagehead .gen{font-size:12px;color:var(--muted)}
+.stagehead .dims{font:600 15px var(--display);font-variant-numeric:tabular-nums}
+.stagehead .hint{font-size:12px;color:var(--muted);margin-top:2px}
+.mode{pointer-events:auto;margin-top:4px;font-size:11.5px;color:var(--warn);border:1px solid currentColor;border-radius:999px;padding:1px 9px;background:var(--panel)}
+.stagefoot{position:absolute;left:var(--gut);right:var(--gut);bottom:14px;display:flex;flex-direction:column;gap:10px;pointer-events:none}
+.bannerhost{display:flex;justify-content:center;pointer-events:auto}
+.footrow{display:flex;align-items:center;gap:16px}
+.views{display:flex;gap:6px;flex:none;pointer-events:auto}
+.views button{font:500 12.5px var(--body);color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:6px;height:34px;padding:0 11px;cursor:pointer}
 .views button:hover{border-color:var(--accent)}
 .disclaimer{margin:0;font-size:11px;line-height:1.5;color:var(--danger);text-wrap:pretty}
 .tip{position:absolute;pointer-events:none;background:var(--fg);color:var(--bg);font-size:12px;font-weight:500;padding:3px 8px;border-radius:4px;transform:translate(12px,12px);white-space:nowrap}
-.loading{position:absolute;inset:0;display:grid;place-content:center;gap:4px;text-align:center;color:var(--muted);background:var(--bg);padding:16px}
+.loading{position:fixed;inset:0;z-index:8;display:grid;place-content:center;gap:4px;text-align:center;color:var(--muted);background:var(--bg);padding:16px}
 .loading p{margin:0}
 #labels{position:absolute;inset:0;pointer-events:none}
-.pl{position:absolute;left:0;top:0;display:flex;align-items:center;gap:6px;max-width:200px;padding:3px 9px 3px 3px;background:var(--panel);border:1px solid var(--line);border-radius:999px;font-size:12px;font-weight:500;white-space:nowrap;cursor:pointer;pointer-events:auto;box-shadow:0 2px 8px rgba(0,0,0,.12);transition:opacity .15s}
+.pl{position:absolute;left:0;top:0;display:flex;align-items:center;gap:6px;max-width:200px;padding:3px 9px 3px 3px;background:var(--panel);border:1px solid var(--line);border-radius:999px;font-size:12px;font-weight:500;white-space:nowrap;cursor:pointer;pointer-events:auto;box-shadow:0 2px 8px var(--shadow);transition:opacity .15s}
 .pl span.t{overflow:hidden;text-overflow:ellipsis}
 .pl.back{opacity:.15;pointer-events:none}
 .pl.on{border-color:var(--accent)}
 .num{flex:none;display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:var(--accent);color:var(--accent-ink);font:600 11.5px var(--display);font-variant-numeric:tabular-nums}
 .num.off{background:var(--chip);color:var(--muted)}
 
-.panel{background:var(--panel);border-left:1px solid var(--line);overflow-y:auto;display:flex;flex-direction:column;gap:22px;padding:20px 20px 24px;min-width:0}
+/* ---------- Panel ---------- */
+.panel{position:fixed;z-index:4;right:16px;top:76px;bottom:16px;width:400px;display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 28px var(--shadow);overflow:hidden}
+.grab{display:none}
+.tabs{flex:none;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-bottom:1px solid var(--line)}
+.tabs button{height:48px;border:none;background:none;font:600 13.5px var(--body);color:var(--muted);border-bottom:2px solid transparent;cursor:pointer;padding:0 4px}
+.tabs button:hover{color:var(--fg)}
+.tabs button[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--accent)}
+.panes{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain}
+.pane{padding:16px;display:flex;flex-direction:column;gap:18px}
+.panelfoot{flex:none;display:flex;justify-content:center;padding:12px 16px 14px;border-top:1px solid var(--line);background:var(--bg2)}
+.panelfoot:has(> [hidden]:only-child){display:none}
 .panel h2{font-size:12px;font-weight:700;letter-spacing:.08em;color:var(--muted);margin:0 0 10px;display:flex;align-items:center;justify-content:space-between;gap:8px}
-.trimrow{display:flex;flex-direction:column;gap:6px}
-.trimrow select{font:600 16px var(--body);color:var(--fg);background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:9px 10px;width:100%}
-.trimrow select:focus{outline:none;border-color:var(--accent)}
-.partrow{display:flex;flex-direction:column;gap:8px}
-#partSel{font:500 14px var(--body);color:var(--fg);background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%}
+#partSel{font:500 14px var(--body);color:var(--fg);background:var(--bg2);border:1px solid var(--line);border-radius:8px;height:44px;padding:0 10px;width:100%}
 #partSel:focus{outline:none;border-color:var(--accent)}
+.reflink{display:none;align-items:center;justify-content:space-between;gap:8px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--bg2);color:var(--fg);text-decoration:none;font-weight:600}
+.reflink svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.reflink:hover{border-color:var(--accent)}
 .nopos{font-size:12px;color:var(--muted);margin:6px 0 0;line-height:1.5}
 .step{display:flex;flex-direction:column;gap:6px}
 .step .label{font-size:11.5px;font-weight:700;letter-spacing:.06em;color:var(--muted)}
@@ -108,14 +154,14 @@ body.busy{cursor:progress}
 .badge[data-s="purchased"]{color:var(--warn)}
 .badge[data-s="installed"]{color:var(--ok)}
 .gen{font-size:12px;color:var(--muted)}
-dl.specs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:10px 0 0}
+dl.specs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:0}
 .spec{background:var(--panel);padding:8px 10px;min-width:0}
 .spec.wide{grid-column:1 / -1}
 .spec dt{font-size:11px;color:var(--muted)}
 .spec dd{margin:2px 0 0;font:600 15px var(--display);font-variant-numeric:tabular-nums}
 .spec dd small{font:500 11px var(--body);color:var(--muted);margin-left:3px}
 .spec dd.tire{font-size:14px}
-.specnote{font-size:11.5px;color:var(--muted);line-height:1.6;margin:8px 0 0}
+.specnote{font-size:11.5px;color:var(--muted);line-height:1.6;margin:0}
 .specnote a{color:inherit}
 .flag{display:inline-block;font-size:10.5px;font-weight:700;color:var(--warn);border:1px solid currentColor;border-radius:4px;padding:0 5px;margin-right:6px}
 .card{border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px}
@@ -133,17 +179,17 @@ form.add input:focus{outline:none;border-color:var(--accent)}
 .chip{font:12.5px var(--body);color:var(--fg);background:var(--chip);border:1px dashed var(--line);border-radius:999px;padding:4px 10px;cursor:pointer}
 .chip:hover{border-color:var(--accent);border-style:solid}
 .opens{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-.tg{display:flex;align-items:center;justify-content:space-between;gap:8px;font:500 13.5px var(--body);color:var(--fg);background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:8px 11px;cursor:pointer;text-align:left}
+.tg{display:flex;align-items:center;justify-content:space-between;gap:8px;font:500 13.5px var(--body);color:var(--fg);background:var(--bg2);border:1px solid var(--line);border-radius:8px;min-height:44px;padding:8px 11px;cursor:pointer;text-align:left}
 .tg .st{font-size:11.5px;color:var(--muted)}
 .tg[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
 .tg[aria-pressed="true"] .st{color:var(--fg)}
 .tg:hover{border-color:var(--accent)}
 .opens-all{display:flex;gap:6px;margin-top:8px}
-.opens-all .btn{flex:1}
-.swatches{display:flex;gap:10px;flex-wrap:wrap}
-.sw{width:30px;height:30px;border-radius:50%;border:2px solid var(--line);cursor:pointer;padding:0}
+.opens-all .btn{flex:1;height:40px}
+.swatches{display:flex;gap:12px;flex-wrap:wrap}
+.sw{width:40px;height:40px;border-radius:50%;border:2px solid var(--line);cursor:pointer;padding:0}
 .sw[aria-pressed="true"]{outline:2px solid var(--accent);outline-offset:2px}
-.swname{font-size:12.5px;color:var(--muted);margin-top:8px}
+.swname{font-size:13px;color:var(--muted);margin-top:10px}
 .group{display:flex;flex-direction:column;gap:2px;margin-bottom:10px}
 .group .gh{font-size:12px;font-weight:700;color:var(--muted);padding:4px 0;cursor:pointer;background:none;border:none;text-align:left;font-family:var(--body)}
 .group .gh:hover{color:var(--accent)}
@@ -154,81 +200,186 @@ select.status{flex:none;font:500 11.5px var(--body);color:var(--muted);backgroun
 select.status[data-s="purchased"]{color:var(--warn);border-color:currentColor}
 select.status[data-s="installed"]{color:var(--ok);border-color:currentColor}
 .ex{font-size:10.5px;color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:0 4px;margin-left:6px}
-.del{flex:none;width:26px;height:26px;border:none;background:none;color:var(--muted);border-radius:6px;cursor:pointer;font-size:16px;line-height:1}
+.del{flex:none;width:28px;height:28px;border:none;background:none;color:var(--muted);border-radius:6px;cursor:pointer;font-size:16px;line-height:1}
 .del:hover{color:var(--danger);background:var(--chip)}
 .count{font-family:var(--display);font-variant-numeric:tabular-nums}
 textarea#copyBuf{width:100%;height:120px;font:12px ui-monospace,monospace;background:var(--bg2);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:8px;margin-top:8px}
+
+/* ---------- Ads ---------- */
+.ad{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;flex:none;max-width:100%;
+  background:repeating-linear-gradient(135deg,var(--ad1) 0 10px,var(--ad2) 10px 20px);border:1px dashed var(--adline);border-radius:6px;color:var(--adink);font-size:12px;overflow:hidden}
+.ad b{font-size:12.5px}
+.ad[data-ad="panel"]{width:320px;height:100px}
+.ad[data-ad="banner"]{width:728px;height:90px}
+.ad.preview[data-ad="panel"] .size::after{content:"320 × 100"}
+.ad.preview[data-ad="banner"] .size::after{content:"728 × 90"}
+.item.sponsor{border:1px dashed var(--adline);background:repeating-linear-gradient(135deg,var(--ad1) 0 10px,var(--ad2) 10px 20px);cursor:default;margin:4px 0 10px}
+.item.sponsor:hover{background:repeating-linear-gradient(135deg,var(--ad1) 0 10px,var(--ad2) 10px 20px)}
+.sponsor .sp{flex:none;font-size:10.5px;font-weight:700;color:var(--adink);border:1px solid var(--adline);border-radius:4px;padding:0 5px}
+
 .toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px;z-index:20;max-width:calc(100% - 32px)}
 .toast.err{background:var(--danger);color:#fff}
 button:focus-visible,input:focus-visible,select:focus-visible,.item:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-@media (max-width:760px){
-  .app{grid-template-columns:minmax(0,1fr);grid-template-rows:54% 46%}
-  .panel{border-left:none;border-top:1px solid var(--line);padding:16px;gap:18px}
-  .stagefoot{left:12px;right:12px;bottom:10px;gap:6px}
-  .disclaimer{font-size:10.5px}
-  .hud .brand{font-size:18px}
+
+/* 網頁版較窄時：縮短文字、廣告改 468×60 */
+@media (max-width:1280px){
+  .brandbox .sub{display:none}
+  .cta .l{display:none} .cta .s{display:inline}
 }
-@media (prefers-reduced-motion:reduce){.pl{transition:none}}
+@media (min-width:1025px) and (max-width:1220px){
+  .ad[data-ad="banner"]{width:468px;height:60px}
+  .ad.preview[data-ad="banner"] .size::after{content:"468 × 60"}
+  .seg button{padding:0 11px}
+}
+@media (min-width:1025px) and (max-height:760px){
+  .stagehead .hint{display:none}
+}
+
+/* ---------- 平板與手機：底部抽屜 ---------- */
+@media (max-width:1024px){
+  :root{--top:112px; --peek:48dvh}
+  .topbar{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:56px 48px;row-gap:0;column-gap:8px;align-items:center}
+  .brandbox{grid-column:1;grid-row:1}
+  .tools{grid-column:2;grid-row:1}
+  .seg{grid-column:1 / -1;grid-row:2;align-self:start}
+  .seg button{flex:1;padding:0 8px;height:38px}
+  .brandbox .sub{display:inline}
+  .stage{right:0;top:var(--top);bottom:var(--peek)}
+  .stagehead{top:4px}
+  .stagehead .hint{display:none}
+  .stagefoot{bottom:10px;gap:6px}
+  .footrow{flex-direction:column;align-items:stretch;gap:6px}
+  .panel{left:0;right:0;top:auto;bottom:0;width:auto;height:var(--peek);border-radius:18px 18px 0 0;border-width:1px 0 0;
+    box-shadow:0 -6px 24px var(--shadow);transition:height .25s ease;padding-bottom:env(safe-area-inset-bottom,0px)}
+  .panel.expanded{height:calc(100dvh - var(--top) - 6px)}
+  .grab{display:flex;justify-content:center;align-items:center;flex:none;height:22px;border:none;background:none;cursor:grab;touch-action:none;padding:0}
+  .grab span{width:44px;height:5px;border-radius:999px;background:var(--line)}
+  .panelfoot{display:none}
+  .bannerhost.sheetbanner{flex:none;padding:10px 0;border-top:1px solid var(--line);background:var(--bg2)}
+  .toast{bottom:calc(var(--peek) + 12px)}
+}
+@media (max-width:1024px) and (min-width:641px){
+  :root{--peek:50dvh}
+}
+@media (max-width:640px){
+  :root{--gut:12px; --top:108px; --peek:46dvh}
+  .topbar{grid-template-rows:54px 46px}
+  .brand{font-size:18px}
+  .brandbox .sub{display:none}
+  .refs [data-ref="jowua"]{display:none}
+  .reflink{display:flex}
+  .cta{padding:0 12px;height:40px}
+  .stagehead .dims{font-size:13px}
+  .views{overflow-x:auto;scrollbar-width:none}
+  .views button{flex:none;height:32px;padding:0 10px}
+  .disclaimer{font-size:10.5px}
+  .ad[data-ad="banner"]{width:320px;height:50px}
+  .ad.preview[data-ad="banner"] .size::after{content:"320 × 50"}
+  .ad.preview[data-ad="banner"]{flex-direction:row;gap:8px}
+  .pane{padding:14px 14px 16px}
+}
+@media (prefers-reduced-motion:reduce){.pl,.panel{transition:none}}
 </style>
 </head>
 <body>
-<div class="app">
-  <div class="stage" id="stage">
-    <div class="hud">
-      <div class="brand">MODEL Y</div>
-      <div class="hint">拖曳旋轉 · 點擊車項新增配件 · 雙擊車門或前後廂開關</div>
-    </div>
-    <div class="mode" id="mode" hidden title="後端未連線，資料只存在這個瀏覽器">離線示範資料</div>
-    <div id="labels"></div>
-    <div class="tip" id="tip" hidden></div>
-    <div class="stagefoot">
-    <div class="views" role="group" aria-label="視角">
-      <button type="button" data-v="front">前</button>
-      <button type="button" data-v="left">左側</button>
-      <button type="button" data-v="right">右側</button>
-      <button type="button" data-v="rear">後</button>
-      <button type="button" data-v="top">俯視</button>
-      <button type="button" data-v="reset">重設</button>
-    </div>
-    <p class="disclaimer">3D 車輛外觀為改色與配件位置示意模型，已移除原廠商標並微調細節；本平台與 Tesla, Inc. 無任何官方合作或授權關係。</p>
-    </div>
-    <div class="loading" id="loading"><p>正在載入車型資料…</p></div>
+<header class="topbar">
+  <div class="brandbox">
+    <div class="brand">MODEL Y</div>
+    <div class="sub" data-i18n="brand.sub">配件檢視器</div>
   </div>
+  <div class="seg" id="trimSeg" role="radiogroup" data-i18n-aria="trim" aria-label="版本"></div>
+  <div class="tools">
+    <button type="button" class="icon-btn" id="langBtn" data-i18n-aria="lang.switch" data-i18n-title="lang.switch" aria-label="Switch to English"><span data-i18n="lang.short">EN</span></button>
+    <button type="button" class="icon-btn" id="themeBtn" data-mode="auto" aria-label="主題">
+      <svg class="i-auto" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><path d="M12 4v16a8 8 0 0 0 0-16z" fill="currentColor"></path></svg>
+      <svg class="i-light" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>
+      <svg class="i-dark" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"></path></svg>
+    </button>
+    <nav class="refs" data-i18n-aria="ref.nav" aria-label="推薦連結">
+      <a class="cta line" data-ref="jowua" data-place="header" href="#"><span class="l" data-i18n="ref.jowua">Jowua 配件</span><span class="s" data-i18n="ref.jowuaShort">Jowua</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"></path></svg></a>
+      <a class="cta dark" data-ref="tesla" data-place="header" href="#"><span class="l" data-i18n="ref.tesla">Tesla 推薦連結訂購</span><span class="s" data-i18n="ref.teslaShort">Tesla 推薦</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"></path></svg></a>
+    </nav>
+  </div>
+</header>
 
-  <aside class="panel">
-    <section class="trimrow">
-      <h2><label for="trimSel">版本</label></h2>
-      <select id="trimSel"></select>
-      <div class="gen" id="genLabel"></div>
+<main class="stage" id="stage">
+  <div class="stagehead">
+    <div class="gen" id="genLabel"></div>
+    <div class="dims" id="dimsLabel"></div>
+    <div class="hint" data-i18n="hint"></div>
+    <div class="mode" id="mode" hidden data-i18n="mode" data-i18n-title="mode.title"></div>
+  </div>
+  <div id="labels"></div>
+  <div class="tip" id="tip" hidden></div>
+  <div class="stagefoot">
+    <div class="bannerhost" id="bannerWide" hidden><div class="ad" data-ad="banner" hidden></div></div>
+    <div class="footrow">
+      <div class="views" role="group" data-i18n-aria="views" aria-label="視角">
+        <button type="button" data-v="front" data-i18n="view.front">前</button>
+        <button type="button" data-v="left" data-i18n="view.left">左側</button>
+        <button type="button" data-v="right" data-i18n="view.right">右側</button>
+        <button type="button" data-v="rear" data-i18n="view.rear">後</button>
+        <button type="button" data-v="top" data-i18n="view.top">俯視</button>
+        <button type="button" data-v="reset" data-i18n="view.reset">重設</button>
+      </div>
+      <p class="disclaimer" data-i18n="disclaimer">3D 車輛外觀為改色與配件位置示意模型，已移除原廠商標並微調細節；本平台與 Tesla, Inc. 無任何官方合作或授權關係。</p>
+    </div>
+  </div>
+</main>
+
+<aside class="panel" id="panel">
+  <button type="button" class="grab" id="sheetBtn" aria-expanded="false" aria-controls="panes" data-i18n-aria="sheet.expand"><span></span></button>
+  <div class="tabs" role="tablist">
+    <button type="button" role="tab" id="tab-specs" aria-controls="pane-specs" aria-selected="false" data-tab="specs" data-i18n="tab.specs">規格</button>
+    <button type="button" role="tab" id="tab-acc" aria-controls="pane-acc" aria-selected="true" data-tab="acc" data-i18n="tab.acc">配件</button>
+    <button type="button" role="tab" id="tab-doors" aria-controls="pane-doors" aria-selected="false" data-tab="doors" data-i18n="tab.doors">車門</button>
+    <button type="button" role="tab" id="tab-paint" aria-controls="pane-paint" aria-selected="false" data-tab="paint" data-i18n="tab.paint">車漆</button>
+  </div>
+  <div class="panes" id="panes">
+    <section class="pane" id="pane-specs" role="tabpanel" aria-labelledby="tab-specs" hidden>
       <dl class="specs" id="specs"></dl>
       <p class="specnote" id="specNote"></p>
     </section>
-    <section class="partrow">
-      <h2><label for="partSel">車項</label></h2>
-      <select id="partSel"></select>
+    <section class="pane" id="pane-acc" role="tabpanel" aria-labelledby="tab-acc">
+      <a class="reflink" data-ref="jowua" data-place="panel" href="#"><span data-i18n="ref.jowuaPanel">到 Jowua 選購 Model Y 配件</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"></path></svg></a>
+      <div>
+        <h2><label for="partSel" data-i18n="part">車項</label></h2>
+        <select id="partSel"></select>
+      </div>
       <div class="card" id="selCard"></div>
-    </section>
-    <section>
-      <h2>車門與車廂</h2>
-      <div class="opens" id="opens"></div>
-      <div class="opens-all">
-        <button type="button" class="btn ghost" id="openAll">全部開啟</button>
-        <button type="button" class="btn ghost" id="closeAll">全部關閉</button>
+      <div>
+        <h2><span><span data-i18n="all">全部配件</span> <span class="count" id="total">0</span></span>
+          <button type="button" class="btn ghost" id="copyBtn" data-i18n="copy">複製清單</button></h2>
+        <div id="allList"></div>
+        <textarea id="copyBuf" readonly hidden data-i18n-aria="copyBuf"></textarea>
       </div>
     </section>
-    <section>
-      <h2>車漆</h2>
-      <div class="swatches" id="swatches"></div>
-      <div class="swname" id="swname"></div>
+    <section class="pane" id="pane-doors" role="tabpanel" aria-labelledby="tab-doors" hidden>
+      <div>
+        <h2 data-i18n="doors">車門與車廂</h2>
+        <div class="opens" id="opens"></div>
+        <div class="opens-all">
+          <button type="button" class="btn ghost" id="openAll" data-i18n="openAll">全部開啟</button>
+          <button type="button" class="btn ghost" id="closeAll" data-i18n="closeAll">全部關閉</button>
+        </div>
+      </div>
     </section>
-    <section>
-      <h2><span>全部配件 <span class="count" id="total">0</span></span>
-        <button type="button" class="btn ghost" id="copyBtn">複製清單</button></h2>
-      <div id="allList"></div>
-      <textarea id="copyBuf" readonly hidden aria-label="配件清單（Tab 分隔）"></textarea>
+    <section class="pane" id="pane-paint" role="tabpanel" aria-labelledby="tab-paint" hidden>
+      <div>
+        <h2 data-i18n="paint">車漆</h2>
+        <div class="swatches" id="swatches"></div>
+        <div class="swname" id="swname"></div>
+      </div>
     </section>
-  </aside>
-</div>
+  </div>
+  <div class="panelfoot"><div class="ad" data-ad="panel" hidden></div></div>
+  <div class="bannerhost sheetbanner" id="bannerSheet" hidden></div>
+</aside>
+
+<div class="loading" id="loading"><p data-i18n="loading">正在載入車型資料…</p></div>
 <div class="toast" id="toast" hidden role="status"></div>
 <datalist id="brandList"></datalist>
 
@@ -237,6 +388,8 @@ button:focus-visible,input:focus-visible,select:focus-visible,.item:focus-visibl
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/BufferGeometryUtils.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/environments/RoomEnvironment.js"></script>
 <script src="js/config.js"></script>
+<script src="js/i18n.js"></script>
+<script src="js/site.js"></script>
 <script src="js/mock-data.js"></script>
 <script src="js/api.js"></script>
 <script src="js/generator.js"></script>
