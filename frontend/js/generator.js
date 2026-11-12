@@ -48,8 +48,10 @@
   /**
    * 擠出參考幾何並套用收窄與雕塑，參考座標另存為 aRef 屬性。
    * sculpt（選用，都以擠出寬度正規化的 zn = |z| / 半寬 計算）：
-   *   sweep：前臉在平面上往兩側後掠，x -= amount·zn²·w(x)，w 在 x 介於 from..to 間由 0 漸變到 1
+   *   sweep：車頭／車尾面在平面上往兩側後掠，w 在 x 介於 from..to 間由 0 漸變到 1；
+   *          to > from（車頭）時 x -= amount·zn²·w，to < from（車尾）時 x += amount·zn²·w
    *   crest：葉子板稜線，y += amount·exp(-((zn - at) / width)²)，只作用在 x、y 範圍內的上表面
+   *   bulge：輪拱外鼓，z ×= 1 + amount·exp(-((x - x0) / wx)² - ((y - y0) / wy)²)，x、y 為 [中心, 寬度]
    */
   function refShell(THREE, conf) {
     const e = conf.extrude;
@@ -69,8 +71,11 @@
       const zn = Math.min(1, Math.abs(z) / c);
       let k = 1;
       for (const t of tapers) k *= 1 - t.amount * taperCurve(t, t.axis === 'x' ? x : y);
+      for (const b of S.bulge || []) {
+        k *= 1 + b.amount * Math.exp(-(((x - b.x[0]) / b.x[1]) ** 2) - (((y - b.y[0]) / b.y[1]) ** 2));
+      }
       let X = x, Y = y;
-      for (const s of S.sweep || []) X -= s.amount * zn * zn * ss(s.from, s.to, x);
+      for (const s of S.sweep || []) X -= Math.sign(s.to - s.from) * s.amount * zn * zn * ss(s.from, s.to, x);
       for (const s of S.crest || []) {
         const w = ss(s.x[0], s.x[1], x) * (1 - ss(s.x[2], s.x[3], x)) * ss(s.y[0], s.y[1], y);
         if (w > 0) Y += s.amount * w * Math.exp(-(((zn - s.at) / s.width) ** 2));
@@ -482,9 +487,11 @@
         const rMat = () => std(0x200000, { emissive: 0xd0101a, emissiveIntensity: 1.2 });
         strip('lights-rear', -1, rb, rMat()).forEach((g) => attachTo(g, openingOf('lights-rear')));
         const lampMat = () => std(0x2a0406, { emissive: 0x7a0a10, emissiveIntensity: 0.55, roughness: 0.25, metalness: 0.3 });
+        // 兩端燈組：外側較高的楔形，從燈條往外、往下包
         const lz = rb.corner_z || [0.6, 0.8];
-        for (const z of [[lz[0], lz[1]], [-lz[1], -lz[0]]]) {
-          const m = panel('lights-rear', 'rear', z, [rb.y - 0.075, rb.y - 0.01], lampMat(), 0.006);
+        const wedge = (a, b) => [[a, rb.y - 0.03, rb.y - 0.008], [b, rb.y - 0.09, rb.y - 0.004]];
+        for (const [z, v] of [[[lz[0], lz[1]], wedge(lz[0], lz[1])], [[-lz[1], -lz[0]], wedge(-lz[0], -lz[1])]]) {
+          const m = panel('lights-rear', 'rear', z, v, lampMat(), 0.006);
           if (m) attachTo(m, openingOf('lights-rear'));
         }
         // 後保桿反光片
@@ -500,8 +507,8 @@
         if (h) {
           const width = (sp.z[1] - sp.z[0]) * map.kz;
           const m = new THREE.Mesh(box(sp.chord, 0.022, width), std(0x16181b, { roughness: 0.35, metalness: 0.3 }));
-          m.position.copy(h.p).addScaledVector(h.n, 0.016);
-          m.rotation.z = Math.atan2(-h.n.x, h.n.y) - 0.12;   // 順著尾門斜面，尾端微翹
+          m.position.copy(h.p).addScaledVector(h.n, 0.011);   // 厚度一半，貼齊鴨尾上緣
+          m.rotation.z = Math.atan2(-h.n.x, h.n.y);            // 順著鴨尾上緣的斜度
           m.castShadow = true; disposables.push(m.geometry, m.material);
           attachTo(m, 'tail');
         }
