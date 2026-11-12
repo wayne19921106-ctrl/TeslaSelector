@@ -38,35 +38,59 @@
     return new THREE.Shape(lead.concat(trail.reverse()));
   }
 
-  /** 擠出參考幾何並套用收窄，參考座標另存為 aRef 屬性。 */
+  /** 收窄曲線：smooth（預設，S 形漸變）或 round（到 to 之前維持全寬，之後以圓弧收邊，用於車頭轉角）。 */
+  function taperCurve(t, v) {
+    if (t.shape !== 'round') return ss(t.from, t.to, v);
+    const u = Math.min(1, Math.max(0, (v - t.from) / (t.to - t.from)));
+    return 1 - Math.sqrt(1 - u * u);
+  }
+
+  /**
+   * 擠出參考幾何並套用收窄與雕塑，參考座標另存為 aRef 屬性。
+   * sculpt（選用，都以擠出寬度正規化的 zn = |z| / 半寬 計算）：
+   *   sweep：前臉在平面上往兩側後掠，x -= amount·zn²·w(x)，w 在 x 介於 from..to 間由 0 漸變到 1
+   *   crest：葉子板稜線，y += amount·exp(-((zn - at) / width)²)，只作用在 x、y 範圍內的上表面
+   */
   function refShell(THREE, conf) {
     const e = conf.extrude;
     let g = new THREE.ExtrudeGeometry(profileToShape(THREE, conf.profile), {
-      depth: e.depth, bevelEnabled: true, bevelThickness: e.bevel_thickness, bevelSize: e.bevel_size,
+      depth: e.depth, steps: e.steps || 1, bevelEnabled: true, bevelThickness: e.bevel_thickness, bevelSize: e.bevel_size,
       bevelSegments: e.bevel_segments, curveSegments: e.curve_segments
     });
     g.translate(0, 0, -e.depth / 2);
     g.deleteAttribute('normal'); g.deleteAttribute('uv');
     if (THREE.BufferGeometryUtils) g = THREE.BufferGeometryUtils.mergeVertices(g, 1e-4);
     const p = g.attributes.position;
-    // 收窄係數 k(x, y)：側面 z = ±c·k(x, y)
-    const kAt = (x, y) => {
+    const c = e.depth / 2 + e.bevel_thickness;   // 擠出半寬（端面所在的 |z|）
+    const tapers = (conf.taper || []).filter((t) => t.axis !== 'z');
+    const S = conf.sculpt || {};
+    // 擠出座標 → 參考座標的完整變換
+    const T = (x, y, z) => {
+      const zn = Math.min(1, Math.abs(z) / c);
       let k = 1;
-      for (const t of conf.taper || []) if (t.axis !== 'z') k *= 1 - t.amount * ss(t.from, t.to, t.axis === 'x' ? x : y);
-      return k;
+      for (const t of tapers) k *= 1 - t.amount * taperCurve(t, t.axis === 'x' ? x : y);
+      let X = x, Y = y;
+      for (const s of S.sweep || []) X -= s.amount * zn * zn * ss(s.from, s.to, x);
+      for (const s of S.crest || []) {
+        const w = ss(s.x[0], s.x[1], x) * (1 - ss(s.x[2], s.x[3], x)) * ss(s.y[0], s.y[1], y);
+        if (w > 0) Y += s.amount * w * Math.exp(-(((zn - s.at) / s.width) ** 2));
+      }
+      return [X, Y, z * k];
     };
     // 側面（擠出的兩個端面）是一大片細長三角形，平滑法向量會把輪拱邊緣的傾斜帶進來，出現斜向亮紋。
-    // 端面頂點改用曲面的解析法向量（倒角從端面切線方向開始，所以交界處不會出現折線）。
-    const c = e.depth / 2 + e.bevel_thickness, capN = new Float32Array(p.count * 3), h = 1e-4;
+    // 端面頂點改用曲面的精確法向量：端面 (x, y) ↦ T(x, y, ±c) 對 x、y 偏微分的外積。
+    // 倒角從端面的切線方向開始，所以交界處不會出現折線。
+    const capN = new Float32Array(p.count * 3), h = 1e-4;
     for (let i = 0; i < p.count; i++) {
       const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
-      const k = kAt(x, y);
       if (Math.abs(Math.abs(z) - c) < 1e-5) {
         const s = Math.sign(z);
-        // 曲面 z = s·c·k(x, y) 的外法向量：(-c·∂k/∂x, -c·∂k/∂y, s)
-        capN.set([-c * (kAt(x + h, y) - kAt(x - h, y)) / (2 * h), -c * (kAt(x, y + h) - kAt(x, y - h)) / (2 * h), s], i * 3);
+        const a1 = T(x + h, y, z), a0 = T(x - h, y, z), b1 = T(x, y + h, z), b0 = T(x, y - h, z);
+        const dx = [a1[0] - a0[0], a1[1] - a0[1], a1[2] - a0[2]], dy = [b1[0] - b0[0], b1[1] - b0[1], b1[2] - b0[2]];
+        capN.set([s * (dx[1] * dy[2] - dx[2] * dy[1]), s * (dx[2] * dy[0] - dx[0] * dy[2]), s * (dx[0] * dy[1] - dx[1] * dy[0])], i * 3);
       }
-      p.setXYZ(i, x, y, z * k);
+      const r = T(x, y, z);
+      p.setXYZ(i, r[0], r[1], r[2]);
     }
     g.setAttribute('aRef', new THREE.BufferAttribute(Float32Array.from(p.array), 3));
     g.userData.capNormals = capN;
@@ -284,8 +308,9 @@
     /** 車頭（end = 1）或車尾（end = -1）表面上，高度 y、左右 z0..z1 的曲線。 */
     function surfaceCurve(end, y, z0, z1, lift) {
       const pts = [], dir = new THREE.Vector3(-end, 0, 0);
+      const [y0, y1] = Array.isArray(y) ? y : [y, y];   // y 可為 [z0 端高度, z1 端高度]
       for (let i = 0; i <= 32; i++) {
-        const h = hitBody(map.fwd(end * 4, y, z0 + ((z1 - z0) * i) / 32), dir);
+        const h = hitBody(map.fwd(end * 4, y0 + ((y1 - y0) * i) / 32, z0 + ((z1 - z0) * i) / 32), dir);
         if (h) pts.push(h.p.addScaledVector(h.n, lift));
       }
       return pts.length >= 2 ? new THREE.CatmullRomCurve3(pts) : null;
@@ -297,11 +322,26 @@
     const outerX = params.reference.axle_x + 0.5;   // 輪拱以外才算車頭／車尾面
     function surfacePatch(face, u, v, lift, nu = 40, nv = 4) {
       const cols = [];
+      // v：[v0, v1] 固定高度範圍，或 [[u, v0, v1], ...] 沿 u 線性內插的外形（楔形頭燈、梯形進氣口）
+      const stops = Array.isArray(v[0]) ? [...v].sort((a, b) => a[0] - b[0]) : null;
+      const vAt = (uu) => {
+        if (!stops) return v;
+        if (uu <= stops[0][0]) return [stops[0][1], stops[0][2]];
+        for (let k = 1; k < stops.length; k++) {
+          if (uu <= stops[k][0]) {
+            const a = stops[k - 1], b = stops[k], t = (uu - a[0]) / (b[0] - a[0]);
+            return [a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+          }
+        }
+        const l = stops[stops.length - 1];
+        return [l[1], l[2]];
+      };
       for (let i = 0; i <= nu; i++) {
         const uu = u[0] + ((u[1] - u[0]) * i) / nu;
+        const vr = vAt(uu);
         let col = [];
         for (let j = 0; j <= nv; j++) {
-          const vv = v[0] + ((v[1] - v[0]) * j) / nv;
+          const vv = vr[0] + ((vr[1] - vr[0]) * j) / nv;
           let o, d;
           if (face === 'front' || face === 'rear') {
             const e = face === 'front' ? 1 : -1;
@@ -351,10 +391,12 @@
     }
     /** 沿表面的管狀零件（燈條、進氣口），兩端加圓帽。 */
     function strip(key, end, conf, mat, mirror) {
-      const ranges = mirror ? [[conf.z[0], conf.z[1]], [-conf.z[1], -conf.z[0]]] : [conf.z];
+      // 鏡像那一側 z 反向，傾斜的 y（[z0 端, z1 端]）也要跟著對調
+      const yRev = Array.isArray(conf.y) ? [conf.y[1], conf.y[0]] : conf.y;
+      const ranges = mirror ? [[conf.z[0], conf.z[1], conf.y], [-conf.z[1], -conf.z[0], yRev]] : [[conf.z[0], conf.z[1], conf.y]];
       const out = [];
-      for (const [z0, z1] of ranges) {
-        const curve = surfaceCurve(end, conf.y, z0, z1, conf.lift ?? conf.r * 0.35);
+      for (const [z0, z1, y] of ranges) {
+        const curve = surfaceCurve(end, y, z0, z1, conf.lift ?? conf.r * 0.35);
         if (!curve) continue;
         const g = new THREE.Group();
         g.add(partMesh(key, new THREE.TubeGeometry(curve, 48, conf.r, 10, false), mat));
@@ -391,21 +433,40 @@
         panel(null, 'left', sk.x, sk.y, satin()),
         panel(null, 'right', sk.x, sk.y, satin())
       ]) if (m) group.add(m);
-
-      // 主頭燈：深色燈殼 + 上緣細日行燈。Standard 在引擎蓋前緣兩側；Premium / Performance 在前保桿兩側
-      if (V.headlights) {
-        const hl = V.headlights;
-        for (const z of [[hl.z[0], hl.z[1]], [-hl.z[1], -hl.z[0]]]) {
-          const m = panel('lights-front', 'front', z, [hl.y - hl.r, hl.y + hl.r], headMat(), 0.006);
+      // 前保桿兩側轉角的垂直導流槽
+      if (T.front_corner_slots) {
+        const cs = T.front_corner_slots;
+        for (const z of [[cs.z[0], cs.z[1]], [-cs.z[1], -cs.z[0]]]) {
+          const m = panel(null, 'front', z, cs.y, gloss(), 0.006);
           if (m) group.add(m);
         }
-        strip('lights-front', 1, { y: hl.y + hl.r * 0.55, z: [hl.z[0] + 0.03, hl.z[1] - 0.02], r: 0.0045, lift: 0.009 }, lightW(), true)
+      }
+
+      // 主頭燈：深色燈殼 + 上緣細日行燈。Standard 在引擎蓋前緣兩側；Premium / Performance 在前保桿兩側
+      // shape（選用）：右側燈殼外形 [[z, 下緣 y, 上緣 y], ...]，左側自動鏡像；沒有時為 y ± r 的長條
+      if (V.headlights) {
+        const hl = V.headlights;
+        const sh = hl.shape || [[hl.z[0], hl.y - hl.r, hl.y + hl.r], [hl.z[1], hl.y - hl.r, hl.y + hl.r]];
+        const zs = sh.map((s) => s[0]), z0 = Math.min(...zs), z1 = Math.max(...zs);
+        const mirrored = sh.map((s) => [-s[0], s[1], s[2]]);
+        for (const [u, v] of [[[z0, z1], sh], [[-z1, -z0], mirrored]]) {
+          const m = panel('lights-front', 'front', u, v, headMat(), 0.006);
+          if (m) group.add(m);
+        }
+        // 日行燈沿燈殼上緣（略往內縮）
+        const top = (z) => { const st = [...sh].sort((a, b) => a[0] - b[0]); let a = st[0], b = st[st.length - 1];
+          for (let k = 1; k < st.length; k++) if (z <= st[k][0]) { a = st[k - 1]; b = st[k]; break; }
+          const t = b[0] === a[0] ? 0 : (z - a[0]) / (b[0] - a[0]); return a[2] + (b[2] - a[2]) * t - 0.008; };
+        const dz0 = z0 + 0.02, dz1 = z1 - 0.015;
+        strip('lights-front', 1, { y: [top(dz0), top(dz1)], z: [dz0, dz1], r: 0.0045, lift: 0.009 }, lightW(), true)
           .forEach((g) => group.add(g));
       }
       // 前保桿水箱罩與 Performance 兩側導流口：亮黑薄片（參數 y ± r 為高度範圍）
       if (V.lower_intake) {
-        const li = V.lower_intake;
-        const m = panel(null, 'front', li.z, [li.y - li.r, li.y + li.r], gloss(), 0.006);
+        const li = V.lower_intake;   // shape（選用）：[[z, 下緣 y, 上緣 y], ...] 梯形等外形
+        const m = li.shape
+          ? panel(null, 'front', [Math.min(...li.shape.map((s) => s[0])), Math.max(...li.shape.map((s) => s[0]))], li.shape, gloss(), 0.006)
+          : panel(null, 'front', li.z, [li.y - li.r, li.y + li.r], gloss(), 0.006);
         if (m) group.add(m);
       }
       if (V.bumper_vents) {
