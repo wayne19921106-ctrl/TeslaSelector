@@ -20,6 +20,7 @@
     // 網址加上 ?ads=preview 可預覽版位位置（顯示灰色佔位框）。
     // panel：網頁版面板底部 320×100；native：配件清單中的贊助卡片；
     // banner：網頁版 3D 區底部 728×90、平板抽屜底部 728×90、手機抽屜底部 320×50。
-    ads: { enabled: false, slots: ['panel', 'native', 'banner'] }
+    // preview = true 時顯示灰色佔位框（等同網址加 ?ads=preview）。
+    ads: { enabled: false, preview: false, slots: ['panel', 'native', 'banner'] }
   };
 })();

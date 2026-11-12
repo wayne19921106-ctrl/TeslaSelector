@@ -39,8 +39,9 @@
 
   /* ---------- 廣告版位 ---------- */
   const adsCfg = cfg.ads || {};
-  let preview = false;
-  try { preview = new URLSearchParams(location.search).get('ads') === 'preview'; } catch (e) { /* 忽略 */ }
+  // 預覽版位：網址加 ?ads=preview，或 config.js 的 ads.preview = true（無法帶網址參數的預覽環境用）
+  let preview = !!adsCfg.preview;
+  try { preview = preview || new URLSearchParams(location.search).get('ads') === 'preview'; } catch (e) { /* 忽略 */ }
   const adOn = (slot) => (adsCfg.enabled || preview) && (adsCfg.slots || []).includes(slot);
 
   /** 填入版位內容。目前只有預覽佔位框；接上廣告聯播網時在這裡渲染實際廣告。 */
