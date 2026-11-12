@@ -54,7 +54,7 @@ button{font-family:inherit}
 .icon-btn:hover{border-color:var(--accent)}
 .icon-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 #themeBtn svg{display:none}
-#themeBtn[data-mode="auto"] .i-auto,#themeBtn[data-mode="light"] .i-light,#themeBtn[data-mode="dark"] .i-dark{display:block}
+#themeBtn[data-mode="light"] .i-light,#themeBtn[data-mode="dark"] .i-dark{display:block}
 .refs{display:flex;gap:8px}
 .cta{display:inline-flex;align-items:center;gap:7px;height:40px;padding:0 15px;border-radius:8px;font-weight:700;font-size:13.5px;text-decoration:none;white-space:nowrap}
 .cta svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
@@ -290,8 +290,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,.item:focus-visibl
   <div class="seg" id="trimSeg" role="radiogroup" data-i18n-aria="trim" aria-label="版本"></div>
   <div class="tools">
     <button type="button" class="icon-btn" id="langBtn" data-i18n-aria="lang.switch" data-i18n-title="lang.switch" aria-label="Switch to English"><span data-i18n="lang.short">EN</span></button>
-    <button type="button" class="icon-btn" id="themeBtn" data-mode="auto" aria-label="主題">
-      <svg class="i-auto" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><path d="M12 4v16a8 8 0 0 0 0-16z" fill="currentColor"></path></svg>
+    <button type="button" class="icon-btn" id="themeBtn" data-mode="light" aria-label="主題">
       <svg class="i-light" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>
       <svg class="i-dark" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"></path></svg>
     </button>

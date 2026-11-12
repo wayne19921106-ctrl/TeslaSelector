@@ -106,7 +106,7 @@ npx serve frontend -l 5173
 | Google Analytics | `config.js` 的 `analytics.gaMeasurementId` | 填入 `G-XXXXXXXXXX` 才載入 gtag。事件：`referral_click`、`select_trim`、`select_paint`、`add_accessory`、`copy_list`、`change_language`、`change_theme` |
 | 廣告版位 | `config.js` 的 `ads` | `enabled: false` 時全部隱藏。網址加 `?ads=preview` 可看版位位置。`panel`：網頁版面板底部 320×100；`native`：配件清單中的贊助卡片；`banner`：網頁 3D 區底部 728×90（1025–1220px 為 468×60）、平板抽屜底部 728×90、手機抽屜底部 320×50。接上廣告聯播網時修改 `site.js` 的 `renderAd()` |
 | 語言 | 頂部 EN／中 按鈕，或網址 `?lang=en` | 預設繁體中文，選擇存在 localStorage。資料庫目前只有中文名稱，英文名稱依 `code` 寫在 `i18n.js` 的 `DATA_EN`，沒有對照的顯示中文；使用者自訂的配件與產品名稱不翻譯 |
-| 主題 | 頂部主題按鈕 | 自動（依裝置系統的深淺色設定）→ 淺色 → 深色，選擇存在 localStorage |
+| 主題 | 頂部主題按鈕 | 預設跟隨裝置系統的深淺色設定。每按一下切換畫面上的深淺色；切回與系統相同的顏色時，自動恢復跟隨系統。選擇存在 localStorage |
 
 ## 部署前端到 GitHub Pages
 

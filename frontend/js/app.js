@@ -696,19 +696,22 @@
   });
   I.onChange(rerender);
 
-  // 主題：自動 → 淺色 → 深色
+  // 主題：按一下切換深淺色；切到與系統相同的顏色時改回「跟隨系統」
   function renderThemeBtn() {
-    const b = $('#themeBtn'); const m = AV.theme ? AV.theme.mode : 'auto';
-    b.dataset.mode = m;
-    const label = `${t('theme')}：${t('theme.' + m)}`.replace('Theme：', 'Theme: ');
+    const b = $('#themeBtn');
+    const eff = AV.theme ? AV.theme.effective : 'light', auto = !AV.theme || AV.theme.mode === 'auto';
+    b.dataset.mode = eff;
+    const label = t('theme.label', { theme: t('theme.' + eff) }) + (auto ? t('theme.followSystem') : '') +
+      t('theme.switchTo', { theme: t('theme.' + (eff === 'dark' ? 'light' : 'dark')) });
     b.setAttribute('aria-label', label); b.title = label;
   }
   $('#themeBtn').addEventListener('click', () => {
     if (!AV.theme) return;
-    AV.theme.cycle(); renderThemeBtn();
+    AV.theme.toggle();
     site.track('change_theme', { theme: AV.theme.mode });
   });
-  if (AV.theme) { AV.theme.onChange((eff) => applySceneTheme(eff)); applySceneTheme(AV.theme.effective); }
+  if (AV.theme) AV.theme.onChange((eff) => { applySceneTheme(eff); renderThemeBtn(); });
+  if (AV.theme) applySceneTheme(AV.theme.effective);
   renderThemeBtn();
 
   /* ---------- Helpers ---------- */
