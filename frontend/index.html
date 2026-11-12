@@ -38,10 +38,11 @@ body.busy{cursor:progress}
 .hud .brand{font-family:var(--display);font-weight:600;font-size:22px;letter-spacing:.04em}
 .hud .hint{color:var(--muted);font-size:12.5px}
 .mode{position:absolute;right:16px;top:14px;font-size:11.5px;color:var(--warn);border:1px solid currentColor;border-radius:999px;padding:2px 9px;background:var(--panel)}
-.views{position:absolute;left:16px;bottom:14px;display:flex;gap:6px;flex-wrap:wrap}
+.stagefoot{position:absolute;left:16px;right:16px;bottom:12px;display:flex;flex-direction:column;align-items:flex-start;gap:8px;pointer-events:none}
+.views{display:flex;gap:6px;flex-wrap:wrap;pointer-events:auto}
 .views button{font:500 12.5px var(--body);color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 11px;cursor:pointer}
 .views button:hover{border-color:var(--accent)}
-.disclaimer{position:absolute;right:16px;bottom:16px;font-size:11px;color:var(--muted);pointer-events:none}
+.disclaimer{margin:0;font-size:11px;line-height:1.5;color:var(--danger);text-wrap:pretty}
 .tip{position:absolute;pointer-events:none;background:var(--fg);color:var(--bg);font-size:12px;font-weight:500;padding:3px 8px;border-radius:4px;transform:translate(12px,12px);white-space:nowrap}
 .loading{position:absolute;inset:0;display:grid;place-content:center;gap:4px;text-align:center;color:var(--muted);background:var(--bg);padding:16px}
 .loading p{margin:0}
@@ -163,7 +164,8 @@ button:focus-visible,input:focus-visible,select:focus-visible,.item:focus-visibl
 @media (max-width:760px){
   .app{grid-template-columns:minmax(0,1fr);grid-template-rows:54% 46%}
   .panel{border-left:none;border-top:1px solid var(--line);padding:16px;gap:18px}
-  .disclaimer{display:none}
+  .stagefoot{left:12px;right:12px;bottom:10px;gap:6px}
+  .disclaimer{font-size:10.5px}
   .hud .brand{font-size:18px}
 }
 @media (prefers-reduced-motion:reduce){.pl{transition:none}}
@@ -179,6 +181,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,.item:focus-visibl
     <div class="mode" id="mode" hidden title="後端未連線，資料只存在這個瀏覽器">離線示範資料</div>
     <div id="labels"></div>
     <div class="tip" id="tip" hidden></div>
+    <div class="stagefoot">
     <div class="views" role="group" aria-label="視角">
       <button type="button" data-v="front">前</button>
       <button type="button" data-v="left">左側</button>
@@ -187,7 +190,8 @@ button:focus-visible,input:focus-visible,select:focus-visible,.item:focus-visibl
       <button type="button" data-v="top">俯視</button>
       <button type="button" data-v="reset">重設</button>
     </div>
-    <div class="disclaimer">依官方規格比例生成的示意模型，非原廠 CAD</div>
+    <p class="disclaimer">3D 車輛外觀為改色與配件位置示意模型，已移除原廠商標並微調細節；本平台與 Tesla, Inc. 無任何官方合作或授權關係。</p>
+    </div>
     <div class="loading" id="loading"><p>正在載入車型資料…</p></div>
   </div>
 
