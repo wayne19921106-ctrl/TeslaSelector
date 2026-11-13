@@ -7,6 +7,9 @@
     apiBase: local ? 'http://localhost:5080/api/v1' : '',
     market: 'TW',
 
+    // 網站名稱與 logo（顯示在最上方工具列）。name 未填時用預設名稱；logo 為圖片網址，空字串時用內建圖示。
+    site: { name: { 'zh-Hant': '', en: '' }, logo: '' },
+
     // 導購連結。url 為 '#' 或空字串時按鈕仍會顯示，但點了不會跳轉。
     referrals: {
       tesla: { url: '#' },   // Tesla 推薦連結，例如 https://ts.la/xxxx

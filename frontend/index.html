@@ -18,7 +18,8 @@
   --cta-bg:#14171b; --cta-fg:#ffffff; --ad1:#eef1f4; --ad2:#e5e9ed; --adline:#8e98a2; --adink:#4a535c;
   --display:"Chakra Petch","Noto Sans TC",system-ui,sans-serif;
   --body:"Noto Sans TC",system-ui,-apple-system,"PingFang TC","Microsoft JhengHei",sans-serif;
-  --top:68px; --peek:46dvh; --gut:16px;
+  /* --appbar：網站工具列；--vbar：車型列（版本切換、導購）；--top：兩者合計 */
+  --appbar:56px; --vbar:60px; --top:calc(var(--appbar) + var(--vbar)); --peek:46dvh; --gut:16px; --panelw:400px;
   color-scheme:light;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
@@ -38,9 +39,44 @@ body.busy{cursor:progress}
 [hidden]{display:none!important}
 button{font-family:inherit}
 
-/* ---------- Top bar ---------- */
-.topbar{position:fixed;left:0;right:0;top:0;z-index:5;height:var(--top);display:flex;align-items:center;gap:18px;
-  padding:0 var(--gut);padding-top:env(safe-area-inset-top,0px);pointer-events:none}
+/* ---------- 網站工具列 ---------- */
+.appbar{position:fixed;left:0;right:0;top:0;z-index:7;height:calc(var(--appbar) + env(safe-area-inset-top,0px));
+  padding:env(safe-area-inset-top,0px) max(var(--gut),env(safe-area-inset-right,0px)) 0 max(var(--gut),env(safe-area-inset-left,0px));
+  display:flex;align-items:center;gap:12px;background:var(--panel);border-bottom:1px solid var(--line)}
+.site{display:flex;align-items:center;gap:10px;min-width:0;flex:0 1 auto;color:var(--fg);text-decoration:none}
+.site .logo{flex:none;width:32px;height:32px;border-radius:8px;display:grid;place-items:center;background:var(--fg);color:var(--panel);overflow:hidden}
+.site .logo img{width:100%;height:100%;object-fit:contain}
+.site .logo svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.site .name{font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.account{margin-left:auto;display:flex;align-items:center;gap:10px}
+.member{display:flex;align-items:center;gap:8px;min-width:0}
+.member .mname{font-size:13.5px;font-weight:500;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.avatar{flex:none;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;overflow:hidden;background:var(--chip);color:var(--muted);border:1px solid var(--line);font:700 14px var(--body)}
+.avatar img{width:100%;height:100%;object-fit:cover}
+.avatar svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.avatar.lg{width:48px;height:48px;font-size:18px}
+.avatar.lg svg{width:26px;height:26px}
+#menuBtn[aria-expanded="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.menu{position:fixed;z-index:30;top:calc(var(--appbar) + env(safe-area-inset-top,0px) + 6px);right:max(var(--gut),env(safe-area-inset-right,0px));width:320px;
+  max-height:calc(100dvh - var(--appbar) - 24px);overflow-y:auto;background:var(--panel);border:1px solid var(--line);border-radius:12px;
+  box-shadow:0 12px 32px var(--shadow);padding:14px;display:flex;flex-direction:column;gap:14px}
+.menu .mcard{display:flex;gap:12px;align-items:center}
+.menu .mcard b{display:block;font-size:15px}
+.menu .mcard span{display:block;font-size:12px;color:var(--muted);line-height:1.5}
+.menu .mrow{display:flex;flex-direction:column;gap:6px}
+.menu .mlabel{font-size:11.5px;font-weight:700;letter-spacing:.06em;color:var(--muted)}
+.menu .seg{width:100%}
+.menu .seg button{flex:1;padding:0 8px;height:36px}
+.menu hr{border:none;border-top:1px solid var(--line);margin:0}
+.mitem{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-height:44px;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg2);color:var(--fg);font:500 14px var(--body);cursor:pointer;text-align:left}
+.mitem:hover:not([disabled]){border-color:var(--accent)}
+.mitem[disabled]{cursor:not-allowed;color:var(--muted)}
+.mitem.primary:not([disabled]){background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
+.soon{flex:none;font-size:10.5px;font-weight:700;color:var(--warn);border:1px solid currentColor;border-radius:999px;padding:0 7px}
+
+/* ---------- 車型列 ---------- */
+.topbar{position:fixed;left:0;right:0;top:calc(var(--appbar) + env(safe-area-inset-top,0px));z-index:5;height:var(--vbar);display:flex;align-items:center;gap:18px;
+  padding:0 var(--gut);pointer-events:none}
 .topbar>*{pointer-events:auto}
 .brandbox{display:flex;align-items:baseline;gap:10px;min-width:0}
 .brand{font-family:var(--display);font-weight:600;font-size:22px;letter-spacing:.04em;white-space:nowrap}
@@ -49,12 +85,9 @@ button{font-family:inherit}
 .seg button{height:36px;padding:0 16px;border:none;border-radius:8px;background:transparent;font:600 13.5px var(--body);color:var(--muted);cursor:pointer;white-space:nowrap}
 .seg button:hover{color:var(--fg)}
 .seg button[aria-checked="true"]{background:var(--panel);color:var(--fg);box-shadow:0 1px 3px var(--shadow)}
-.tools{margin-left:auto;display:flex;align-items:center;gap:8px}
 .icon-btn{display:inline-grid;place-items:center;width:40px;height:40px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--fg);cursor:pointer;font:700 13px var(--body)}
 .icon-btn:hover{border-color:var(--accent)}
 .icon-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-#themeBtn svg{display:none}
-#themeBtn[data-mode="light"] .i-light,#themeBtn[data-mode="dark"] .i-dark{display:block}
 .refs{display:flex;gap:8px}
 .cta{display:inline-flex;align-items:center;gap:7px;height:40px;padding:0 15px;border-radius:8px;font-weight:700;font-size:13.5px;text-decoration:none;white-space:nowrap}
 .cta svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
@@ -63,12 +96,14 @@ button{font-family:inherit}
 .cta:hover{filter:brightness(1.08)}
 .cta.line:hover{border-color:var(--accent)}
 .cta .s{display:none}
+.appbar .cta{height:36px;padding:0 13px;font-size:13px}
+.account .refs{margin-right:4px}
 
 /* ---------- Stage ---------- */
-.stage{position:fixed;left:0;top:0;bottom:0;right:432px;overflow:hidden}
+.stage{position:fixed;left:0;top:calc(var(--appbar) + env(safe-area-inset-top,0px));bottom:0;right:calc(var(--panelw) + 32px);overflow:hidden}
 .stage canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
 .stage canvas:active{cursor:grabbing}
-.stagehead{position:absolute;left:var(--gut);top:calc(var(--top) + 8px);display:flex;flex-direction:column;align-items:flex-start;gap:3px;pointer-events:none;max-width:calc(100% - 2*var(--gut))}
+.stagehead{position:absolute;left:var(--gut);top:calc(var(--vbar) + 8px);display:flex;flex-direction:column;align-items:flex-start;gap:3px;pointer-events:none;max-width:calc(100% - 2*var(--gut))}
 .stagehead .gen{font-size:12px;color:var(--muted)}
 .stagehead .dims{font:600 15px var(--display);font-variant-numeric:tabular-nums}
 .stagehead .hint{font-size:12px;color:var(--muted);margin-top:2px}
@@ -81,8 +116,20 @@ button{font-family:inherit}
 .views button:hover{border-color:var(--accent)}
 .disclaimer{margin:0;font-size:11px;line-height:1.5;color:var(--danger);text-wrap:pretty}
 .tip{position:absolute;pointer-events:none;background:var(--fg);color:var(--bg);font-size:12px;font-weight:500;padding:3px 8px;border-radius:4px;transform:translate(12px,12px);white-space:nowrap}
-.loading{position:fixed;inset:0;z-index:8;display:grid;place-content:center;gap:4px;text-align:center;color:var(--muted);background:var(--bg);padding:16px}
+.loading{position:fixed;inset:0;z-index:40;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;color:var(--muted);background:var(--bg);padding:16px}
 .loading p{margin:0}
+.loading .logo{width:48px;height:48px;border-radius:12px;display:grid;place-items:center;background:var(--fg);color:var(--bg)}
+.loading .logo svg{width:32px;height:32px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+/* 載入中的跳動圓點 */
+.dots{display:inline-flex;align-items:center;gap:8px;height:24px}
+.dots i{width:10px;height:10px;border-radius:50%;background:var(--accent);animation:av-dot 1.1s ease-in-out infinite}
+.dots i:nth-child(2){animation-delay:.15s}
+.dots i:nth-child(3){animation-delay:.3s}
+@keyframes av-dot{0%,70%,100%{transform:translateY(0) scale(.7);opacity:.4}35%{transform:translateY(-8px) scale(1);opacity:1}}
+@keyframes av-fade{0%,100%{opacity:.35}50%{opacity:1}}
+.stage.is-loading #labels{visibility:hidden}
+.stageload{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:6;display:flex;flex-direction:column;align-items:center;gap:8px;
+  padding:16px 22px;border-radius:12px;background:var(--panel);border:1px solid var(--line);box-shadow:0 8px 24px var(--shadow);font-size:13px;color:var(--muted)}
 #labels{position:absolute;inset:0;pointer-events:none}
 .pl{position:absolute;left:0;top:0;display:flex;align-items:center;gap:6px;max-width:200px;padding:3px 9px 3px 3px;background:var(--panel);border:1px solid var(--line);border-radius:999px;font-size:12px;font-weight:500;white-space:nowrap;cursor:pointer;pointer-events:auto;box-shadow:0 2px 8px var(--shadow);transition:opacity .15s}
 .pl span.t{overflow:hidden;text-overflow:ellipsis}
@@ -92,12 +139,38 @@ button{font-family:inherit}
 .num.off{background:var(--chip);color:var(--muted)}
 
 /* ---------- Panel ---------- */
-.panel{position:fixed;z-index:4;right:16px;top:76px;bottom:16px;width:400px;display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 28px var(--shadow);overflow:hidden}
+.panel{position:fixed;z-index:4;right:16px;top:calc(var(--appbar) + env(safe-area-inset-top,0px) + 8px);bottom:16px;width:var(--panelw);display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 28px var(--shadow);overflow:hidden}
 .grab{display:none}
-.tabs{flex:none;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-bottom:1px solid var(--line)}
-.tabs button{height:48px;border:none;background:none;font:600 13.5px var(--body);color:var(--muted);border-bottom:2px solid transparent;cursor:pointer;padding:0 4px}
+.tabbar{flex:none;display:flex;border-bottom:1px solid var(--line)}
+.tabs{flex:1;min-width:0;display:flex}
+.tabs button{position:relative;flex:1 1 auto;display:flex;align-items:center;justify-content:center;gap:6px;height:48px;border:none;background:none;font:600 13.5px var(--body);color:var(--muted);border-bottom:2px solid transparent;cursor:pointer;padding:0 8px;white-space:nowrap}
 .tabs button:hover{color:var(--fg)}
 .tabs button[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--accent)}
+.ti{flex:none;width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tabs button[aria-selected="true"] .ti{color:var(--accent)}
+.collapse-btn{position:relative;flex:none;width:44px;height:48px;display:grid;place-items:center;border:none;border-left:1px solid var(--line);background:none;color:var(--muted);cursor:pointer}
+.collapse-btn:hover{color:var(--fg);background:var(--chip)}
+.collapse-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.collapse-btn .c-out{display:none}
+/* 網頁版：面板向右收合成只有圖示的直欄，游標停在圖示上顯示標題 */
+@media (min-width:1025px){
+  body.panel-collapsed{--panelw:56px}
+  .panel{transition:width .2s ease}
+  .panel.collapsed{bottom:auto;overflow:visible}
+  .panel.collapsed .tabbar{flex-direction:column;border-bottom:none}
+  .panel.collapsed .collapse-btn{order:-1;width:100%;height:48px;border-left:none;border-bottom:1px solid var(--line);border-radius:14px 14px 0 0}
+  .panel.collapsed .collapse-btn .c-in{display:none}
+  .panel.collapsed .collapse-btn .c-out{display:inline}
+  .panel.collapsed .tabs{flex-direction:column}
+  .panel.collapsed .tabs button{height:52px;padding:0;border-bottom:none;border-left:2px solid transparent}
+  .panel.collapsed .tabs button[aria-selected="true"]{border-left-color:var(--accent)}
+  .panel.collapsed .tabs button:last-child{border-radius:0 0 0 14px}
+  .panel.collapsed .ti{width:22px;height:22px}
+  .panel.collapsed .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  .panel.collapsed .panes,.panel.collapsed .panelfoot{display:none}
+  .panel.collapsed [data-tip]:hover::after,.panel.collapsed [data-tip]:focus-visible::after{content:attr(data-tip);position:absolute;right:calc(100% + 10px);top:50%;transform:translateY(-50%);
+    padding:5px 10px;border-radius:6px;background:var(--fg);color:var(--bg);font:500 12.5px var(--body);white-space:nowrap;pointer-events:none;box-shadow:0 4px 12px var(--shadow)}
+}
 .panes{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain}
 .pane{padding:16px;display:flex;flex-direction:column;gap:18px}
 .panelfoot{flex:none;display:flex;justify-content:center;padding:12px 16px 14px;border-top:1px solid var(--line);background:var(--bg2)}
@@ -237,21 +310,20 @@ button:focus-visible,input:focus-visible,select:focus-visible,.item:focus-visibl
 
 /* ---------- 平板與手機：底部抽屜 ---------- */
 @media (max-width:1024px){
-  :root{--top:112px; --peek:48dvh}
-  .topbar{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:56px 48px;row-gap:0;column-gap:8px;align-items:center}
-  .brandbox{grid-column:1;grid-row:1}
-  .tools{grid-column:2;grid-row:1}
-  .seg{grid-column:1 / -1;grid-row:2;align-self:start}
+  :root{--appbar:52px; --vbar:60px; --peek:48dvh}
+  .topbar{gap:14px}
+  .topbar .seg{flex:1}
   .seg button{flex:1;padding:0 8px;height:38px}
   .brandbox .sub{display:inline}
-  .stage{right:0;top:var(--top);bottom:var(--peek)}
+  .stage{right:0;top:calc(var(--top) + env(safe-area-inset-top,0px));bottom:var(--peek)}
   .stagehead{top:4px}
   .stagehead .hint{display:none}
   .stagefoot{bottom:10px;gap:6px}
   .footrow{flex-direction:column;align-items:stretch;gap:6px}
   .panel{left:0;right:0;top:auto;bottom:0;width:auto;height:var(--peek);border-radius:18px 18px 0 0;border-width:1px 0 0;
     box-shadow:0 -6px 24px var(--shadow);transition:height .25s ease;padding-bottom:env(safe-area-inset-bottom,0px)}
-  .panel.expanded{height:calc(100dvh - var(--top) - 6px)}
+  .panel.expanded{height:calc(100dvh - var(--top) - env(safe-area-inset-top,0px) - 6px)}
+  .collapse-btn{display:none}
   .grab{display:flex;justify-content:center;align-items:center;flex:none;height:22px;border:none;background:none;cursor:grab;touch-action:none;padding:0}
   .grab span{width:44px;height:5px;border-radius:999px;background:var(--line)}
   .panelfoot{display:none}
@@ -262,8 +334,12 @@ button:focus-visible,input:focus-visible,select:focus-visible,.item:focus-visibl
   :root{--peek:50dvh}
 }
 @media (max-width:640px){
-  :root{--gut:12px; --top:108px; --peek:46dvh}
-  .topbar{grid-template-rows:54px 46px}
+  :root{--gut:12px; --vbar:52px; --peek:44dvh}
+  .topbar .brandbox{display:none}
+  .account{gap:8px}
+  .member .mname{display:none}
+  .menu{left:max(var(--gut),env(safe-area-inset-left,0px));width:auto}
+  .site .name{font-size:14px}
   .brand{font-size:18px}
   .brandbox .sub{display:none}
   .refs [data-ref="jowua"]{display:none}
@@ -277,30 +353,64 @@ button:focus-visible,input:focus-visible,select:focus-visible,.item:focus-visibl
   .ad.preview[data-ad="banner"] .size::after{content:"320 × 50"}
   .ad.preview[data-ad="banner"]{flex-direction:row;gap:8px}
   .pane{padding:14px 14px 16px}
+  .tabs button{flex:1 1 0;flex-direction:column;gap:2px;height:54px;padding:0 2px;font-size:12px}
+  .tabs .ti{width:20px;height:20px}
 }
-@media (prefers-reduced-motion:reduce){.pl,.panel{transition:none}}
+@media (prefers-reduced-motion:reduce){.pl,.panel{transition:none!important}.dots i{animation:av-fade 1.6s ease-in-out infinite}}
 </style>
 </head>
 <body>
-<header class="topbar">
-  <div class="brandbox">
-    <div class="brand">MODEL Y</div>
-    <div class="sub" data-i18n="brand.sub">配件檢視器</div>
-  </div>
-  <div class="seg" id="trimSeg" role="radiogroup" data-i18n-aria="trim" aria-label="版本"></div>
-  <div class="tools">
-    <button type="button" class="icon-btn" id="langBtn" data-i18n-aria="lang.switch" data-i18n-title="lang.switch" aria-label="Switch to English"><span data-i18n="lang.short">EN</span></button>
-    <button type="button" class="icon-btn" id="themeBtn" data-mode="light" aria-label="主題">
-      <svg class="i-light" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>
-      <svg class="i-dark" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"></path></svg>
-    </button>
+<header class="appbar">
+  <a class="site" href="./" id="siteLink">
+    <span class="logo" id="siteLogo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15.5v-2.2c0-.6.4-1.1 1-1.3l3-.9 2.6-2.6c.4-.4.9-.6 1.4-.6h3.4c.6 0 1.1.3 1.5.7l2.4 2.6 1.6.4c.6.2 1.1.7 1.1 1.4v2.5"></path><path d="M3 15.5h1.6M9.4 15.5h5.2M19.4 15.5H21"></path><circle cx="7" cy="15.8" r="2.1"></circle><circle cx="17" cy="15.8" r="2.1"></circle></svg></span>
+    <span class="name" id="siteName">配件檢視器</span>
+  </a>
+  <div class="account">
     <nav class="refs" data-i18n-aria="ref.nav" aria-label="推薦連結">
       <a class="cta line" data-ref="jowua" data-place="header" href="#"><span class="l" data-i18n="ref.jowua">Jowua 配件</span><span class="s" data-i18n="ref.jowuaShort">Jowua</span>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"></path></svg></a>
       <a class="cta dark" data-ref="tesla" data-place="header" href="#"><span class="l" data-i18n="ref.tesla">Tesla 推薦連結訂購</span><span class="s" data-i18n="ref.teslaShort">Tesla 推薦</span>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"></path></svg></a>
     </nav>
+    <div class="member" id="member">
+      <span class="mname" id="memberName" data-i18n="member.guest">訪客</span>
+      <span class="avatar" id="memberAvatar"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.5"></circle><path d="M5 19.5c1.2-3.3 4-5 7-5s5.8 1.7 7 5"></path></svg></span>
+    </div>
+    <button type="button" class="icon-btn" id="menuBtn" aria-expanded="false" aria-controls="appMenu" aria-haspopup="true" data-i18n-aria="menu" aria-label="選單">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path></svg>
+    </button>
   </div>
+</header>
+<div class="menu" id="appMenu" hidden>
+  <div class="mcard">
+    <span class="avatar lg" id="menuAvatar"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.5"></circle><path d="M5 19.5c1.2-3.3 4-5 7-5s5.8 1.7 7 5"></path></svg></span>
+    <div><b id="menuName" data-i18n="member.guest">訪客</b><span data-i18n="member.guestNote">登入後可在不同裝置保存配置清單。</span></div>
+  </div>
+  <button type="button" class="mitem primary" disabled><span data-i18n="member.signIn">登入／註冊</span><span class="soon" data-i18n="soon">即將推出</span></button>
+  <button type="button" class="mitem" disabled><span data-i18n="menu.builds">我的配置清單</span><span class="soon" data-i18n="soon">即將推出</span></button>
+  <hr>
+  <div class="mrow">
+    <span class="mlabel" id="menuLangLabel" data-i18n="menu.language">語言</span>
+    <div class="seg" role="radiogroup" aria-labelledby="menuLangLabel" id="menuLang">
+      <button type="button" role="radio" data-lang="zh-Hant" aria-checked="true">繁體中文</button>
+      <button type="button" role="radio" data-lang="en" aria-checked="false">English</button>
+    </div>
+  </div>
+  <div class="mrow">
+    <span class="mlabel" id="menuThemeLabel" data-i18n="menu.theme">主題</span>
+    <div class="seg" role="radiogroup" aria-labelledby="menuThemeLabel" id="menuTheme">
+      <button type="button" role="radio" data-theme-mode="auto" data-i18n="theme.auto" aria-checked="true">跟隨系統</button>
+      <button type="button" role="radio" data-theme-mode="light" data-i18n="theme.lightTitle" aria-checked="false">淺色</button>
+      <button type="button" role="radio" data-theme-mode="dark" data-i18n="theme.darkTitle" aria-checked="false">深色</button>
+    </div>
+  </div>
+</div>
+
+<header class="topbar">
+  <div class="brandbox">
+    <div class="brand">MODEL Y</div>
+  </div>
+  <div class="seg" id="trimSeg" role="radiogroup" data-i18n-aria="trim" aria-label="版本"></div>
 </header>
 
 <main class="stage" id="stage">
@@ -312,6 +422,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,.item:focus-visibl
   </div>
   <div id="labels"></div>
   <div class="tip" id="tip" hidden></div>
+  <div class="stageload" id="stageLoad" role="status" hidden><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span id="stageLoadText" data-i18n="loading.model">正在載入車型…</span></div>
   <div class="stagefoot">
     <div class="bannerhost" id="bannerWide" hidden><div class="ad" data-ad="banner" hidden></div></div>
     <div class="footrow">
@@ -330,11 +441,16 @@ button:focus-visible,input:focus-visible,select:focus-visible,.item:focus-visibl
 
 <aside class="panel" id="panel">
   <button type="button" class="grab" id="sheetBtn" aria-expanded="false" aria-controls="panes" data-i18n-aria="sheet.expand"><span></span></button>
-  <div class="tabs" role="tablist">
-    <button type="button" role="tab" id="tab-specs" aria-controls="pane-specs" aria-selected="false" data-tab="specs" data-i18n="tab.specs">規格</button>
-    <button type="button" role="tab" id="tab-acc" aria-controls="pane-acc" aria-selected="true" data-tab="acc" data-i18n="tab.acc">配件</button>
-    <button type="button" role="tab" id="tab-doors" aria-controls="pane-doors" aria-selected="false" data-tab="doors" data-i18n="tab.doors">車門</button>
-    <button type="button" role="tab" id="tab-paint" aria-controls="pane-paint" aria-selected="false" data-tab="paint" data-i18n="tab.paint">車漆</button>
+  <div class="tabbar">
+    <div class="tabs" role="tablist" aria-orientation="horizontal">
+      <button type="button" role="tab" id="tab-specs" aria-controls="pane-specs" aria-selected="false" data-tab="specs" data-i18n-tip="tab.specs" data-tip="規格"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 16.5 16.5 3.5l4 4-13 13z"></path><path d="M7.5 12.5l2 2M10.5 9.5l2 2M13.5 6.5l2 2"></path></svg><span class="lbl" data-i18n="tab.specs">規格</span></button>
+      <button type="button" role="tab" id="tab-acc" aria-controls="pane-acc" aria-selected="true" data-tab="acc" data-i18n-tip="tab.acc" data-tip="配件"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h4a2 2 0 1 1 4 0h4v4a2 2 0 1 1 0 4v4H4z"></path></svg><span class="lbl" data-i18n="tab.acc">配件</span></button>
+      <button type="button" role="tab" id="tab-doors" aria-controls="pane-doors" aria-selected="false" data-tab="doors" data-i18n-tip="tab.doors" data-tip="車門"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21V9.5L10.5 4H19v17z"></path><path d="M5 11.5h14M14.5 15h2.5"></path></svg><span class="lbl" data-i18n="tab.doors">車門</span></button>
+      <button type="button" role="tab" id="tab-paint" aria-controls="pane-paint" aria-selected="false" data-tab="paint" data-i18n-tip="tab.paint" data-tip="車漆"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5s6 6.4 6 10.8a6 6 0 0 1-12 0C6 9.9 12 3.5 12 3.5z"></path><path d="M9.5 15a2.6 2.6 0 0 0 2.5 2.5"></path></svg><span class="lbl" data-i18n="tab.paint">車漆</span></button>
+    </div>
+    <button type="button" class="collapse-btn" id="collapseBtn" aria-expanded="true" aria-controls="panes" data-i18n-tip="panel.collapse" data-tip="收合面板" data-i18n-aria="panel.collapse" aria-label="收合面板">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path class="c-in" d="m10 6 6 6-6 6"></path><path class="c-out" d="m14 6-6 6 6 6"></path></svg>
+    </button>
   </div>
   <div class="panes" id="panes">
     <section class="pane" id="pane-specs" role="tabpanel" aria-labelledby="tab-specs" hidden>
@@ -378,7 +494,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,.item:focus-visibl
   <div class="bannerhost sheetbanner" id="bannerSheet" hidden></div>
 </aside>
 
-<div class="loading" id="loading"><p data-i18n="loading">正在載入車型資料…</p></div>
+<div class="loading" id="loading" role="status"><span class="logo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15.5v-2.2c0-.6.4-1.1 1-1.3l3-.9 2.6-2.6c.4-.4.9-.6 1.4-.6h3.4c.6 0 1.1.3 1.5.7l2.4 2.6 1.6.4c.6.2 1.1.7 1.1 1.4v2.5"></path><path d="M3 15.5h1.6M9.4 15.5h5.2M19.4 15.5H21"></path><circle cx="7" cy="15.8" r="2.1"></circle><circle cx="17" cy="15.8" r="2.1"></circle></svg></span><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><p data-i18n="loading">正在載入車型資料…</p></div>
 <div class="toast" id="toast" hidden role="status"></div>
 <datalist id="brandList"></datalist>
 

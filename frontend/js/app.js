@@ -188,14 +188,33 @@
   }
   const tabBtns = [...document.querySelectorAll('.tabs [role="tab"]')];
   tabBtns.forEach((b, i) => {
-    b.addEventListener('click', () => setTab(b.dataset.tab));
+    b.addEventListener('click', () => { if (isCollapsed()) setCollapsed(false); setTab(b.dataset.tab); });
     b.addEventListener('keydown', (e) => {
-      const k = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+      const k = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 1, ArrowUp: -1 }[e.key];
       if (!k) return;
       e.preventDefault();
       setTab(tabBtns[(i + k + tabBtns.length) % tabBtns.length].dataset.tab, true);
     });
   });
+
+  /* 網頁版面板向右收合（平板與手機的底部抽屜不適用） */
+  const COLLAPSE_KEY = 'av.panelCollapsed';
+  const isCollapsed = () => !sheetMq.matches && panel.classList.contains('collapsed');
+  function setCollapsed(c, save = true) {
+    panel.classList.toggle('collapsed', c);
+    document.body.classList.toggle('panel-collapsed', c);
+    $('.tabs').setAttribute('aria-orientation', c && !sheetMq.matches ? 'vertical' : 'horizontal');
+    const btn = $('#collapseBtn'), key = c ? 'panel.expand' : 'panel.collapse';
+    btn.setAttribute('aria-expanded', !c);
+    btn.dataset.i18nTip = key; btn.dataset.i18nAria = key;
+    btn.dataset.tip = t(key); btn.setAttribute('aria-label', t(key));
+    if (save) { try { localStorage.setItem(COLLAPSE_KEY, c ? '1' : '0'); } catch (e) { /* 只在本頁有效 */ } }
+  }
+  $('#collapseBtn').addEventListener('click', () => {
+    setCollapsed(!panel.classList.contains('collapsed'));
+    site.track('toggle_panel', { collapsed: panel.classList.contains('collapsed') });
+  });
+  try { if (localStorage.getItem(COLLAPSE_KEY) === '1') setCollapsed(true, false); } catch (e) { /* 預設展開 */ }
 
   function setSheet(expanded) {
     panel.classList.toggle('expanded', expanded);
@@ -516,7 +535,6 @@
     if (!S.build) return;
     renderPartSel(); renderTrim(); renderOpenings(); renderSwatches(); renderAll();
     setSheet(panel.classList.contains('expanded'));
-    renderThemeBtn();
   }
 
   /* ---------- Accessory actions ---------- */
@@ -571,7 +589,7 @@
   function select(code, pos) {
     if (code !== S.sel) S.openForm = null;
     S.sel = code; S.pending = pos;
-    if (code) setTab('acc');
+    if (code) { if (isCollapsed()) setCollapsed(false); setTab('acc'); }
     renderAll();
   }
   function focusAcc(a) {
@@ -632,6 +650,9 @@
     const oc = S.car.openingFor(h.partCode, h.p);
     if (!oc) return;
     S.car.setOpen(oc, !S.car.isOpen(oc), REDUCE); renderOpenings();
+    // 開關車門或前後廂時，面板切到「車門」（收合時一併展開）
+    if (isCollapsed()) setCollapsed(false);
+    setTab('doors');
     toast(t(S.car.isOpen(oc) ? 't.opened' : 't.closed', { name: openingName(S.car.pivots[oc].def) }));
   });
   canvas.addEventListener('pointermove', (e) => {
@@ -656,8 +677,11 @@
   async function switchTrim(trimId) {
     if (!S.build || trimId === S.build.trimId) return;
     await run(async () => {
-      S.build = await S.client.updateBuild(S.build.id, { trimId });
-      await loadTrim(trimId);
+      stageLoading(true);
+      try {
+        S.build = await S.client.updateBuild(S.build.id, { trimId });
+        await loadTrim(trimId);
+      } finally { stageLoading(false); }
       renderAll();
       toast(t('t.trim', { name: trimName(S.trim) }));
       site.track('select_trim', { trim: S.trim.code });
@@ -688,31 +712,75 @@
     site.track('copy_list', { count: acc.length });
   });
 
-  // 語系
-  $('#langBtn').addEventListener('click', () => {
-    const next = I.lang === 'en' ? 'zh-Hant' : 'en';
-    I.setLang(next);
-    site.track('change_language', { language: next });
-  });
+  // 語言與主題都在右上選單中切換
   I.onChange(rerender);
-
-  // 主題：按一下切換深淺色；切到與系統相同的顏色時改回「跟隨系統」
-  function renderThemeBtn() {
-    const b = $('#themeBtn');
-    const eff = AV.theme ? AV.theme.effective : 'light', auto = !AV.theme || AV.theme.mode === 'auto';
-    b.dataset.mode = eff;
-    const label = t('theme.label', { theme: t('theme.' + eff) }) + (auto ? t('theme.followSystem') : '') +
-      t('theme.switchTo', { theme: t('theme.' + (eff === 'dark' ? 'light' : 'dark')) });
-    b.setAttribute('aria-label', label); b.title = label;
-  }
-  $('#themeBtn').addEventListener('click', () => {
-    if (!AV.theme) return;
-    AV.theme.toggle();
-    site.track('change_theme', { theme: AV.theme.mode });
-  });
-  if (AV.theme) AV.theme.onChange((eff) => { applySceneTheme(eff); renderThemeBtn(); });
+  if (AV.theme) AV.theme.onChange((eff) => { applySceneTheme(eff); renderMenu(); });
   if (AV.theme) applySceneTheme(AV.theme.effective);
-  renderThemeBtn();
+
+  /* ---------- 網站工具列：名稱、logo、會員、選單 ---------- */
+  const siteCfg = (window.APP_CONFIG || {}).site || {};
+  const PERSON_SVG = $('#memberAvatar').innerHTML;
+  // 會員：目前沒有登入功能，null 代表訪客。之後接上登入時呼叫 AV.setMember({ name, avatarUrl })。
+  let member = null;
+  function avatarHtml(m) {
+    if (!m) return PERSON_SVG;
+    if (m.avatarUrl) return `<img src="${esc(m.avatarUrl)}" alt="">`;
+    return esc(Array.from((m.name || '?').trim())[0] || '?').toUpperCase();
+  }
+  function renderChrome() {
+    const names = siteCfg.name || {};
+    $('#siteName').textContent = (typeof names === 'string' ? names : names[I.lang]) || t('site.name');
+    if (siteCfg.logo && !$('#siteLogo img')) $('#siteLogo').innerHTML = `<img src="${esc(siteCfg.logo)}" alt="">`;
+    const name = member ? member.name : t('member.guest');
+    $('#memberName').textContent = name; $('#menuName').textContent = name;
+    $('#memberAvatar').innerHTML = avatarHtml(member); $('#menuAvatar').innerHTML = avatarHtml(member);
+    $('#member').title = member ? t('member.account', { name }) : name;
+    renderMenu();
+  }
+  AV.setMember = (m) => { member = m && m.name ? { name: m.name, avatarUrl: m.avatarUrl || '' } : null; renderChrome(); };
+
+  function renderMenu() {
+    document.querySelectorAll('#menuLang [role="radio"]').forEach((b) => b.setAttribute('aria-checked', b.dataset.lang === I.lang));
+    const mode = AV.theme ? AV.theme.mode : 'auto';
+    document.querySelectorAll('#menuTheme [role="radio"]').forEach((b) => b.setAttribute('aria-checked', b.dataset.themeMode === mode));
+  }
+  const menu = $('#appMenu'), menuBtn = $('#menuBtn');
+  function setMenu(open, focusBtn) {
+    menu.hidden = !open;
+    menuBtn.setAttribute('aria-expanded', open);
+    if (open) { renderMenu(); const first = menu.querySelector('button:not([disabled])'); if (first) first.focus(); }
+    else if (focusBtn) menuBtn.focus();
+  }
+  menuBtn.addEventListener('click', () => setMenu(menu.hidden));
+  document.addEventListener('pointerdown', (e) => {
+    if (!menu.hidden && !menu.contains(e.target) && !menuBtn.contains(e.target)) setMenu(false);
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) { e.stopPropagation(); setMenu(false, true); } }, true);
+  document.querySelectorAll('#menuLang [role="radio"]').forEach((b) => b.addEventListener('click', () => {
+    if (b.dataset.lang === I.lang) return;
+    I.setLang(b.dataset.lang);
+    site.track('change_language', { language: b.dataset.lang });
+  }));
+  document.querySelectorAll('#menuTheme [role="radio"]').forEach((b) => b.addEventListener('click', () => {
+    if (!AV.theme) return;
+    AV.theme.set(b.dataset.themeMode);
+    site.track('change_theme', { theme: AV.theme.mode });
+  }));
+  I.onChange(renderChrome);
+  renderChrome();
+
+  /* ---------- 3D 區載入中（跳動圓點） ---------- */
+  // 超過 180ms 才顯示，避免切換很快時一閃而過
+  let loadTimer = null, loadDepth = 0;
+  function stageLoading(on, textKey) {
+    if (on) {
+      $('#stageLoadText').textContent = t(textKey || 'loading.model');
+      if (loadDepth++ === 0) loadTimer = setTimeout(() => { $('#stageLoad').hidden = false; stage.classList.add('is-loading'); }, 180);
+    } else if (--loadDepth <= 0) {
+      loadDepth = 0; clearTimeout(loadTimer); $('#stageLoad').hidden = true; stage.classList.remove('is-loading');
+    }
+  }
+  AV.stageLoading = stageLoading;
 
   /* ---------- Helpers ---------- */
   let tt;
