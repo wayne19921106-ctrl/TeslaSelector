@@ -38,8 +38,64 @@
     return new THREE.Shape(lead.concat(trail.reverse()));
   }
 
-  /** 收窄曲線：smooth（預設，S 形漸變）或 round（到 to 之前維持全寬，之後以圓弧收邊，用於車頭轉角）。 */
+  /**
+   * 細分擠出的兩個端面（車側）：端面是輪廓三角化後的大三角形，只有輪廓上有頂點，收窄與外鼓若只作用在頂點，
+   * 側面中間會被線性內插拉歪。這裡反覆把最長的內部邊對半切（兩側三角形一起切，不產生 T 型接縫），
+   * 直到內部邊都短於 maxLen。輪廓邊不切，所以和倒角環的接縫不受影響。
+   */
+  function refineCaps(THREE, g, c, maxLen) {
+    const pa = g.attributes.position.array, P = [];
+    for (let i = 0; i < pa.length; i += 3) P.push([pa[i], pa[i + 1], pa[i + 2]]);
+    const T = Array.from(g.index.array);
+    const onCap = (v) => Math.abs(Math.abs(P[v][2]) - c) < 1e-5;
+    const tris = [];   // 端面三角形 [a, b, c]
+    const keep = [];
+    for (let i = 0; i < T.length; i += 3) {
+      const t = [T[i], T[i + 1], T[i + 2]];
+      if (t.every(onCap) && Math.abs(P[t[0]][2] - P[t[1]][2]) < 1e-5 && Math.abs(P[t[0]][2] - P[t[2]][2]) < 1e-5) tris.push(t); else keep.push(...t);
+    }
+    const len = (a, b) => Math.hypot(P[a][0] - P[b][0], P[a][1] - P[b][1]);
+    const K = 1 << 20, key2 = (a, b) => (a < b ? a * K + b : b * K + a);   // 數字鍵（頂點數遠小於 2^20）
+    const edges = new Map();   // 邊 → 使用它的三角形索引
+    const addTri = (ti) => { const t = tris[ti]; for (let k = 0; k < 3; k++) { const e = key2(t[k], t[(k + 1) % 3]); const l = edges.get(e); if (l) l.push(ti); else edges.set(e, [ti]); } };
+    const delTri = (ti) => { const t = tris[ti]; for (let k = 0; k < 3; k++) { const e = key2(t[k], t[(k + 1) % 3]); const l = edges.get(e); l.splice(l.indexOf(ti), 1); if (!l.length) edges.delete(e); } };
+    tris.forEach((_, i) => addTri(i));
+    // 每一輪把所有過長的內部邊由長到短切一次，直到沒有過長的邊
+    for (let pass = 0; pass < 30; pass++) {
+      const todo = [];
+      for (const [e, l] of edges) {
+        if (l.length !== 2) continue;   // 輪廓邊（只屬於一個三角形）不切
+        const a = Math.floor(e / K), b = e % K, d = len(a, b);
+        if (d > maxLen) todo.push([d, a, b]);
+      }
+      if (!todo.length) break;
+      todo.sort((x, y) => y[0] - x[0]);
+      for (const [, a, b] of todo) {
+        const l = edges.get(key2(a, b));
+        if (!l || l.length !== 2) continue;   // 這一輪已經被切過
+        const m = P.length;
+        P.push([(P[a][0] + P[b][0]) / 2, (P[a][1] + P[b][1]) / 2, P[a][2]]);
+        for (const ti of [...l]) {
+          const t = tris[ti]; delTri(ti);
+          const i = t.findIndex((v, k) => (v === a && t[(k + 1) % 3] === b) || (v === b && t[(k + 1) % 3] === a));
+          const u = t[i], w = t[(i + 1) % 3], o = t[(i + 2) % 3];   // 保持原本的繞行方向
+          tris[ti] = [u, m, o]; addTri(ti);
+          tris.push([m, w, o]); addTri(tris.length - 1);
+        }
+      }
+    }
+    const out = new THREE.BufferGeometry();
+    out.setAttribute('position', new THREE.Float32BufferAttribute(P.flat(), 3));
+    out.setIndex(keep.concat(tris.flat()));
+    return out;
+  }
+
+  /** 收窄曲線：smooth（預設，S 形漸變）、smoother（更平順的 S 形）或 round（到 to 之前維持全寬，之後以圓弧收邊）。 */
   function taperCurve(t, v) {
+    if (t.shape === 'smoother') {   // 二階導數連續：曲率沒有突變，反射不會在起訖線上出現折痕
+      const u = Math.min(1, Math.max(0, (v - t.from) / (t.to - t.from)));
+      return u * u * u * (u * (u * 6 - 15) + 10);
+    }
     if (t.shape !== 'round') return ss(t.from, t.to, v);
     const u = Math.min(1, Math.max(0, (v - t.from) / (t.to - t.from)));
     return 1 - Math.sqrt(1 - u * u);
@@ -62,8 +118,9 @@
     g.translate(0, 0, -e.depth / 2);
     g.deleteAttribute('normal'); g.deleteAttribute('uv');
     if (THREE.BufferGeometryUtils) g = THREE.BufferGeometryUtils.mergeVertices(g, 1e-4);
-    const p = g.attributes.position;
     const c = e.depth / 2 + e.bevel_thickness;   // 擠出半寬（端面所在的 |z|）
+    if (g.index) g = refineCaps(THREE, g, c, e.cap_max_edge || 0.1);
+    const p = g.attributes.position;
     const tapers = (conf.taper || []).filter((t) => t.axis !== 'z');
     const S = conf.sculpt || {};
     // 擠出座標 → 參考座標的完整變換
@@ -80,7 +137,7 @@
       const zn = Math.min(1, Math.abs(z) / c);
       const k = kOf(x, y);
       let X = x, Y = y;
-      for (const s of S.sweep || []) X -= Math.sign(s.to - s.from) * s.amount * zn * zn * ss(s.from, s.to, x);
+      for (const s of S.sweep || []) X -= Math.sign(s.to - s.from) * s.amount * zn * zn * taperCurve({ shape: s.shape, from: s.from, to: s.to }, x);
       for (const s of S.crest || []) {
         const w = ss(s.x[0], s.x[1], x) * (1 - ss(s.x[2], s.x[3], x)) * ss(s.y[0], s.y[1], y);
         if (w > 0) Y += s.amount * w * Math.exp(-(((zn - s.at) / s.width) ** 2));
@@ -172,7 +229,9 @@
       uSeam: { value: seams ? 1 : 0 },
       uDoorX: { value: new THREE.Vector3(...(seams ? seams.door_x : [99, 99, 99])) },
       uSeamA: { value: new THREE.Vector4(seams ? seams.hood_x : 99, seams ? seams.gate_x : 99, seams ? seams.side_z : 99, seams ? (seams.hood_y ?? 0.88) : 99) },
-      uSeamY: { value: new THREE.Vector3(...(seams ? [seams.y_range[0], seams.y_range[1], seams.gate_y ?? 0.70] : [0, 0, 0])) }
+      uSeamY: { value: new THREE.Vector3(...(seams ? [seams.y_range[0], seams.y_range[1], seams.gate_y ?? 0.70] : [0, 0, 0])) },
+      // 前廂蓋兩側的縱向分縫：seams.hood_side = { z, y }，|z| 位置與最低高度（前端停在燈條上方）
+      uHoodZ: { value: new THREE.Vector2(seams && seams.hood_side ? seams.hood_side.z : 99, seams && seams.hood_side ? seams.hood_side.y : 99) }
     };
   }
 
@@ -187,7 +246,7 @@
    *     frame    窗框飾條寬度
    *     pillars  開口內的黑色直柱 [[x0, x1], ...]（最多 2 個）：B 柱、後三角窗分隔
    *     belt_y   側面開口外、低於此高度的車身色屬於車門上緣，隨車門開啟
-   * 開啟件在玻璃罩上帶走的範圍（moves）：車門只帶走側面的車窗與門上緣，A、C 柱留在車身；
+   * 開啟件在玻璃罩上帶走的範圍（moves）：車門只帶走側面的車窗與門上緣，A、B、C 柱與分隔柱留在車身（無框車窗）；
    * 尾門只帶走頂面的玻璃與橫樑，兩側縱樑留在車身。
    *   body.detail.wheel_arch：{ y, r } 輪軸中心高度與輪拱飾條外緣半徑，半徑內為深色
    */
@@ -235,7 +294,11 @@
     const boxKind = (b) => (!gd ? 0 : b.max[2] <= 0 || b.min[2] >= 0 ? 1 : 2);
     function moves(kind, ref, znv) {
       if (!gd || !kind) return true;
-      if (kind === 1) return znv > SIDE && (glassRegion(ref, 1) !== 'paint' || ref.y < gd.belt_y);
+      if (kind === 1) {
+        if (znv <= SIDE) return false;
+        const r = glassRegion(ref, 1);
+        return r === 'paint' ? ref.y < gd.belt_y : r !== 'pillar';
+      }
       return znv <= SIDE && znv <= gd.rail_zn;
     }
     return { uniforms, glassRegion, boxKind, moves, SIDE, glassOn: !!gd, archOn: !!wa };
@@ -268,7 +331,7 @@
       sh.fragmentShader = [
         'varying vec3 vLoc;',
         'uniform vec3 uHMin, uHMax, uSMin, uSMax, uH2Min, uH2Max, uS2Min, uS2Max, uTint, uKMin, uKMax, uDoorX, uSeamY;',
-        'uniform vec4 uSeamA;',
+        'uniform vec4 uSeamA;', 'uniform vec2 uHoodZ;',
         'uniform float uHOn, uSOn, uSeam, uMode;',
         'uniform vec3 uCMin[8];', 'uniform vec3 uCMax[8];',
         'varying float vZn;',
@@ -290,8 +353,11 @@
             gDmin = min(gDmin, length(vLoc.xy - a - ab * t));
           }
         }
-        // 開啟件帶走的範圍：車門（kind 1）只帶走側面的車窗與門上緣；尾門（kind 2）只帶走頂面的玻璃與橫樑
-        float mvDoor = (uGOn < 0.5 || (gSide && (gInside || vLoc.y < uGP.z))) ? 1.0 : 0.0;
+        // 開啟件帶走的範圍：車門（kind 1）只帶走側面的車窗與門上緣（柱子留在車身）；尾門（kind 2）只帶走頂面的玻璃與橫樑
+        bool gPil = false;
+        for (int i = 0; i < 2; i++) gPil = gPil || (vLoc.x > uPil[i].x && vLoc.x < uPil[i].y);
+        gPil = gPil && gInside && gDmin >= uGP.y;
+        float mvDoor = (uGOn < 0.5 || (gSide && ((gInside && !gPil) || (!gInside && vLoc.y < uGP.z)))) ? 1.0 : 0.0;
         float mvGate = (uGOn < 0.5 || (!gSide && zn <= uGP.x)) ? 1.0 : 0.0;
         if (uMode < 0.5) {
           for (int i = 0; i < 8; i++) {
@@ -307,7 +373,8 @@
           float sm = max(max(line(vLoc.x, uDoorX.x), line(vLoc.x, uDoorX.y)), line(vLoc.x, uDoorX.z));
           float hood = line(vLoc.x, uSeamA.x) * step(uSeamA.w, vLoc.y) * step(abs(vLoc.z), uSeamA.z);
           float gate = line(vLoc.x, uSeamA.y) * step(uSeamY.z, vLoc.y);
-          diffuseColor.rgb *= 1.0 - 0.75 * max(max(sm * side, hood), gate);
+          float hoodSide = line(abs(vLoc.z), uHoodZ.x) * step(uSeamA.x, vLoc.x) * step(uHoodZ.y, vLoc.y);
+          diffuseColor.rgb *= 1.0 - 0.75 * max(max(max(sm * side, hood), gate), hoodSide);
         }
         if (uGOn > 0.5) {
           if (gSide) {
@@ -453,20 +520,53 @@
     // 從車外打射線到車身，取得表面點與法向量，零件就能順著車頭／車尾的弧度生成。
     const probe = new THREE.Raycaster();
     const DOWN = new THREE.Vector3(0, -1, 0);
+    // 車身射線：外殼三角形依 x、y、左右分成小區塊，射線只測與區塊外框相交的部分（貼合零件要打上千條射線）
+    let chunks = null;
+    function buildChunks() {
+      const g = body.geometry, pos = g.attributes.position.array, idx = g.index ? g.index.array : null;
+      const n = idx ? idx.length : pos.length / 3, NX = 16, NY = 6;
+      const bb = g.boundingBox, sx = (bb.max.x - bb.min.x) / NX, sy = (bb.max.y - bb.min.y) / NY;
+      const bins = new Map();
+      for (let i = 0; i < n; i += 3) {
+        const ids = idx ? [idx[i], idx[i + 1], idx[i + 2]] : [i, i + 1, i + 2];
+        let cx = 0, cy = 0, cz = 0;
+        for (const v of ids) { cx += pos[v * 3]; cy += pos[v * 3 + 1]; cz += pos[v * 3 + 2]; }
+        const k = Math.min(NX - 1, Math.max(0, Math.floor((cx / 3 - bb.min.x) / sx))) * 100
+          + Math.min(NY - 1, Math.max(0, Math.floor((cy / 3 - bb.min.y) / sy))) * 2 + (cz > 0 ? 1 : 0);
+        let b = bins.get(k);
+        if (!b) bins.set(k, (b = { tri: [], box: new THREE.Box3() }));
+        for (const v of ids) { b.tri.push(pos[v * 3], pos[v * 3 + 1], pos[v * 3 + 2]); }
+      }
+      chunks = [...bins.values()].map((b) => ({ tri: Float32Array.from(b.tri), box: b.box.setFromArray(b.tri) }));
+    }
+    const ta = new THREE.Vector3(), tb = new THREE.Vector3(), tc = new THREE.Vector3(), tp = new THREE.Vector3();
     function hitBody(origin, dir) {
+      if (!chunks) buildChunks();
       probe.set(origin, dir);
-      const h = probe.intersectObject(body, false)[0];
-      if (!h) return null;
-      const n = h.face.normal.clone();
-      if (n.dot(dir) > 0) n.negate();
-      return { p: h.point, n };
+      const ray = probe.ray;
+      let best = Infinity, bp = null, bn = null;
+      for (const c of chunks) {
+        if (!ray.intersectsBox(c.box)) continue;
+        const t = c.tri;
+        for (let i = 0; i < t.length; i += 9) {
+          ta.set(t[i], t[i + 1], t[i + 2]); tb.set(t[i + 3], t[i + 4], t[i + 5]); tc.set(t[i + 6], t[i + 7], t[i + 8]);
+          if (!ray.intersectTriangle(ta, tb, tc, false, tp)) continue;
+          const d = tp.distanceTo(ray.origin);
+          if (d < best) { best = d; bp = tp.clone(); bn = tc.clone().sub(tb).cross(ta.clone().sub(tb)).normalize(); }
+        }
+      }
+      if (!bp) return null;
+      if (bn.dot(dir) > 0) bn.negate();
+      return { p: bp, n: bn };
     }
     /** 車頭（end = 1）或車尾（end = -1）表面上，高度 y、左右 z0..z1 的曲線。 */
     function surfaceCurve(end, y, z0, z1, lift) {
       const pts = [], dir = new THREE.Vector3(-end, 0, 0);
-      const [y0, y1] = Array.isArray(y) ? y : [y, y];   // y 可為 [z0 端高度, z1 端高度]
+      // y：固定高度、[z0 端高度, z1 端高度]，或函式 (z) => 高度
+      const yAt = typeof y === 'function' ? y : Array.isArray(y) ? (z) => y[0] + ((y[1] - y[0]) * (z - z0)) / (z1 - z0) : () => y;
       for (let i = 0; i <= 32; i++) {
-        const h = hitBody(map.fwd(end * 4, y0 + ((y1 - y0) * i) / 32, z0 + ((z1 - z0) * i) / 32), dir);
+        const z = z0 + ((z1 - z0) * i) / 32;
+        const h = hitBody(map.fwd(end * 4, yAt(z), z), dir);
         if (h) pts.push(h.p.addScaledVector(h.n, lift));
       }
       return pts.length >= 2 ? new THREE.CatmullRomCurve3(pts) : null;
@@ -551,8 +651,10 @@
       const yRev = Array.isArray(conf.y) ? [conf.y[1], conf.y[0]] : conf.y;
       const ranges = mirror ? [[conf.z[0], conf.z[1], conf.y], [-conf.z[1], -conf.z[0], yRev]] : [[conf.z[0], conf.z[1], conf.y]];
       const out = [];
+      // rise（選用）：[上揚量, 從 |z|, 到 |z|]，燈條兩端沿車頭邊緣上揚
+      const rise = conf.rise ? (y0) => (z) => y0 + conf.rise[0] * ss(conf.rise[1], conf.rise[2], Math.abs(z)) : null;
       for (const [z0, z1, y] of ranges) {
-        const curve = surfaceCurve(end, y, z0, z1, conf.lift ?? conf.r * 0.35);
+        const curve = surfaceCurve(end, rise && !Array.isArray(y) ? rise(y) : y, z0, z1, conf.lift ?? conf.r * 0.35);
         if (!curve) continue;
         const g = new THREE.Group();
         g.add(partMesh(key, new THREE.TubeGeometry(curve, 48, conf.r, 10, false), mat));
@@ -580,11 +682,11 @@
       const T = params.dark_trim || {};
       const satin = () => std(0x17191c, { roughness: 0.62, metalness: 0.1 });
       const gloss = () => std(0x08090b, { roughness: 0.28, metalness: 0.35 });
-      const fl = T.front_lower || { y: [0.225, 0.29], z: [-0.74, 0.74] };
+      const fl = T.front_lower === null ? null : T.front_lower || { y: [0.225, 0.29], z: [-0.74, 0.74] };   // null：不畫
       const rl = T.rear_lower || { y: [0.225, 0.44], z: [-0.86, 0.86] };
       const sk = T.skirts || { x: [-0.97, 0.97], y: [0.225, 0.34] };
       for (const m of [
-        panel(null, 'front', fl.z, fl.y, satin()),
+        fl && panel(null, 'front', fl.z, fl.y, satin()),
         panel(null, 'rear', rl.z, rl.shape || rl.y, satin()),   // shape（選用）：[[z, 下緣 y, 上緣 y], ...]
         panel(null, 'left', sk.x, sk.y, satin()),
         panel(null, 'right', sk.x, sk.y, satin())
@@ -645,9 +747,10 @@
           const m = panel('lights-rear', 'rear', z, v, lampMat(), 0.006);
           if (m) attachTo(m, openingOf('lights-rear'));
         }
-        // 後保桿反光片
-        for (const z of [[0.6, 0.72], [-0.72, -0.6]]) {
-          const m = panel(null, 'rear', z, [rl.y[1] - 0.05, rl.y[1] - 0.03], std(0x300000, { emissive: 0x500006, emissiveIntensity: 0.6 }), 0.008);
+        // 後保桿反光片（lights.rear_reflector：{ y: [下, 上], z: [內, 外] }）
+        const rr = L.rear_reflector || { y: [rl.y[1] - 0.05, rl.y[1] - 0.03], z: [0.6, 0.72] };
+        for (const z of [[rr.z[0], rr.z[1]], [-rr.z[1], -rr.z[0]]]) {
+          const m = panel(null, 'rear', z, rr.y, std(0x300000, { emissive: 0x500006, emissiveIntensity: 0.6 }), 0.008);
           if (m) group.add(m);
         }
       }
@@ -770,24 +873,85 @@
         if (rot) { m.rotation.order = 'ZYX'; m.rotation.set(rot[0], rot[1], rot[2]); }
         group.add(m); return m;
       };
-      add('floor', box(3.0, 0.06, 1.6 * map.kz), std(0x17191c), [-0.45, 0.34, 0]);
-      for (const z of [-0.38, 0.38]) {
-        add('seat-front', box(0.5, 0.14, 0.5), std(0x2c2f34), [0.18, 0.5, z]);
-        add('front-seatback', box(0.14, 0.62, 0.48), std(0x2c2f34), [-0.14, 0.86, z], [0, 0, 0.2]);
-        add('seat-front', box(0.1, 0.18, 0.28), std(0x2c2f34), [-0.24, 1.26, z], [0, 0, 0.2]);
+      // 位置與尺寸依 2025 Model Y 參考模型量測（左駕：方向盤在 z < 0）。座標為參考座標，幾何尺寸為公尺。
+      const merge = (gs) => {
+        const out = THREE.BufferGeometryUtils.mergeBufferGeometries(gs.map((g) => (g.index ? g.toNonIndexed() : g)));
+        gs.forEach((g) => g.dispose());
+        return out;
+      };
+      /** 圓角方塊：x 長、y 高、z 寬，圓角半徑 r。 */
+      const rbox = (x, y, z, r) => {
+        r = Math.min(r, x / 2 - 1e-3, y / 2 - 1e-3, z / 2 - 1e-3);
+        const sh = new THREE.Shape(), a = x / 2 - r, b = y / 2 - r;
+        sh.moveTo(-a, -y / 2); sh.lineTo(a, -y / 2); sh.quadraticCurveTo(x / 2, -y / 2, x / 2, -b);
+        sh.lineTo(x / 2, b); sh.quadraticCurveTo(x / 2, y / 2, a, y / 2); sh.lineTo(-a, y / 2);
+        sh.quadraticCurveTo(-x / 2, y / 2, -x / 2, b); sh.lineTo(-x / 2, -b); sh.quadraticCurveTo(-x / 2, -y / 2, -a, -y / 2);
+        const g = new THREE.ExtrudeGeometry(sh, { depth: z - 2 * r, bevelEnabled: true, bevelThickness: r, bevelSize: 0, bevelSegments: 3, curveSegments: 4 });
+        g.translate(0, 0, -(z - 2 * r) / 2);
+        return g;
+      };
+      /** 正面輪廓 [[橫向, 高], ...]（只給右半邊，自動鏡像）沿前後方向擠出 t 厚，高度從 0 起算。 */
+      const slab = (half, t, r) => {
+        const pts = half.map(([u, v]) => new THREE.Vector2(u, v));
+        const sh = new THREE.Shape(pts.concat(half.slice().reverse().map(([u, v]) => new THREE.Vector2(-u, v))));
+        const g = new THREE.ExtrudeGeometry(sh, { depth: t - 2 * r, bevelEnabled: true, bevelThickness: r, bevelSize: r * 0.6, bevelSegments: 3, curveSegments: 6 });
+        g.translate(0, 0, -(t - 2 * r) / 2); g.rotateY(-Math.PI / 2);   // 擠出方向轉到前後（x），輪廓的橫向轉到 z
+        return g;
+      };
+      /** 側面輪廓 [[x, y], ...] 沿橫向擠出 w 寬。 */
+      const profileW = (pts, w, r) => {
+        const g = new THREE.ExtrudeGeometry(new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(x, y))),
+          { depth: w - 2 * r, bevelEnabled: true, bevelThickness: r, bevelSize: r * 0.5, bevelSegments: 3, curveSegments: 8 });
+        g.translate(0, 0, -(w - 2 * r) / 2);
+        return g;
+      };
+      const leather = () => std(0x1d1f22, { roughness: 0.82, metalness: 0.0, envMapIntensity: 0.6 });   // 黑色內裝，霧面
+      const trimDark = () => std(0x17191b, { roughness: 0.75, envMapIntensity: 0.6 });
+
+      add('floor', box(3.0, 0.06, 1.6 * map.kz), std(0x17191c), [-0.45, 0.39, 0]);
+      // 前座：坐墊（前緣略翹）＋兩側包覆，椅背往上收窄並後傾，獨立頭枕
+      const backHalf = [[0, 0], [0.25, 0], [0.26, 0.12], [0.25, 0.42], [0.21, 0.6], [0.15, 0.64], [0, 0.645]];
+      for (const z of [-0.421, 0.421]) {
+        add('seat-front', merge([
+          rbox(0.58, 0.12, 0.42, 0.045),
+          rbox(0.54, 0.16, 0.075, 0.035).translate(0, 0.02, -0.235), rbox(0.54, 0.16, 0.075, 0.035).translate(0, 0.02, 0.235)
+        ]), leather(), [0.2, 0.63, z], [0, 0, 0.07]);   // 繞 z 正轉：前緣上翹
+        add('front-seatback', merge([
+          slab(backHalf, 0.11, 0.035),
+          rbox(0.13, 0.5, 0.07, 0.03).translate(0.02, 0.27, -0.24), rbox(0.13, 0.5, 0.07, 0.03).translate(0.02, 0.27, 0.24)
+        ]).translate(0, -0.32, 0), leather(), [-0.17, 0.93, z], [0, 0, 0.42]);
+        add('seat-front', rbox(0.09, 0.15, 0.25, 0.04), leather(), [-0.285, 1.31, z], [0, 0, 0.3]);
       }
-      add('seat-rear', box(0.5, 0.14, 1.4), std(0x2c2f34), [-0.85, 0.5, 0]);
-      add('rear-seatback', box(0.14, 0.6, 1.4), std(0x2c2f34), [-1.17, 0.86, 0], [0, 0, 0.25]);
-      for (const z of [-0.45, 0, 0.45]) add('seat-rear', box(0.09, 0.15, 0.26), std(0x2c2f34), [-1.27, 1.24, z], [0, 0, 0.25]);
-      add('console', box(0.75, 0.22, 0.22), std(0x202327), [0.3, 0.5, 0]);
-      add('dash', box(0.45, 0.22, 1.55 * map.kz), std(0x1f2226), [0.92, 0.86, 0]);
-      add('screen', box(0.025, 0.24, 0.38), std(0x0a0c0f, { emissive: 0x2a4a6a, emissiveIntensity: 0.9, roughness: 0.2 }), [0.66, 1.08, 0], [0, 0, 0.15]);
-      add('rear-screen', box(0.02, 0.11, 0.17), std(0x0a0c0f, { emissive: 0x2a4a6a, emissiveIntensity: 0.9, roughness: 0.2 }), [-0.09, 0.66, 0], [0, 0, -0.2]);
-      add('steer', new THREE.TorusGeometry(0.16, 0.022, 10, 40), std(0x18191c), [0.58, 0.98, -0.38], [0, Math.PI / 2, 0.35]);
-      add('frunk-tub', box(0.85, 0.28, 1.25), std(0x1d2024), [1.62, 0.5, 0]);
-      add('trunk', box(0.95, 0.06, 1.5), std(0x1a1c1f), [-1.85, 0.56, 0]);
+      // 後座：整排坐墊、往上收窄的椅背、三個頭枕
+      add('seat-rear', merge([rbox(0.5, 0.14, 1.26, 0.05),
+        rbox(0.46, 0.17, 0.08, 0.035).translate(0, 0.015, -0.62), rbox(0.46, 0.17, 0.08, 0.035).translate(0, 0.015, 0.62)]),
+        leather(), [-0.745, 0.71, 0], [0, 0, 0.05]);
+      add('rear-seatback', slab([[0, 0], [0.66, 0], [0.66, 0.4], [0.6, 0.66], [0, 0.68]], 0.11, 0.035).translate(0, -0.34, 0),
+        leather(), [-1.12, 0.99, 0], [0, 0, 0.42]);
+      for (const z of [-0.415, 0, 0.415]) add('seat-rear', rbox(0.08, 0.13, 0.23, 0.04), leather(), [-1.185, 1.3, z], [0, 0, 0.42]);
+      // 中控台：前段置物與無線充電、後段扶手
+      add('console', merge([rbox(0.86, 0.28, 0.22, 0.04).translate(0.12, 0, 0), rbox(0.36, 0.09, 0.21, 0.04).translate(-0.12, 0.17, 0)]),
+        trimDark(), [0.0, 0.62, 0]);
+      // 儀表台：側面輪廓沿車寬擠出，上緣一條環景氛圍燈
+      const dashW = 1.48 * map.kz;
+      add('dash', profileW([[0.58, 0.74], [0.54, 0.86], [0.56, 0.96], [0.61, 1.03], [0.78, 1.075], [1.1, 1.09], [1.16, 1.04], [1.08, 0.74]], dashW, 0.04),
+        std(0x1a1c1f, { roughness: 0.85, envMapIntensity: 0.6 }), [0, 0, 0]);
+      add('dash', rbox(0.012, 0.01, dashW - 0.12, 0.004), std(0x0b0d10, { emissive: 0x9fb8d8, emissiveIntensity: 0.7 }), [0.566, 0.985, 0]);
+      // 15.4 吋懸浮中控螢幕（橫向，略後仰）
+      add('screen', merge([rbox(0.022, 0.215, 0.355, 0.012), rbox(0.05, 0.08, 0.07, 0.015).translate(0.04, -0.11, 0)]),
+        std(0x050608, { emissive: 0x0e1824, emissiveIntensity: 1, roughness: 0.3, metalness: 0, envMapIntensity: 0.4 }), [0.52, 1.16, 0], [0, 0, -0.2]);
+      add('rear-screen', rbox(0.02, 0.11, 0.17, 0.01), std(0x050608, { emissive: 0x0e1824, emissiveIntensity: 1, roughness: 0.3, envMapIntensity: 0.4 }), [-0.31, 0.67, 0], [0, 0, -0.2]);
+      // 方向盤：圓形輪圈、兩根橫向輪輻、中央氣囊蓋與轉向柱（輪面在 xy 平面，轉到朝向駕駛）
+      add('steer', merge([
+        new THREE.TorusGeometry(0.145, 0.019, 12, 48),
+        rbox(0.25, 0.035, 0.018, 0.008).translate(0, -0.01, 0),
+        new THREE.CylinderGeometry(0.058, 0.058, 0.045, 28).rotateX(Math.PI / 2).translate(0, -0.005, -0.012),
+        new THREE.CylinderGeometry(0.03, 0.035, 0.22, 16).rotateX(Math.PI / 2).translate(0, 0, 0.13)
+      ]), std(0x18191c, { roughness: 0.5 }), [0.415, 1.11, -0.426], [0, Math.PI / 2, -0.35]);   // 輪面朝駕駛、上緣前傾，轉向柱往前下方進儀表台
+      add('frunk-tub', box(0.85, 0.28, 1.25), std(0x1d2024), [1.62, 0.65, 0]);
+      add('trunk', box(0.95, 0.06, 1.5), std(0x1a1c1f), [-1.85, 0.67, 0]);
       for (const [key, z] of [['trunk-pocket-L', -0.70], ['trunk-pocket-R', 0.70]]) {
-        add(key, box(0.42, 0.18, 0.08), std(0x1d2024), [-1.80, 0.68, z]);
+        add(key, box(0.42, 0.18, 0.08), std(0x1d2024), [-1.80, 0.79, z]);
       }
     }
 
