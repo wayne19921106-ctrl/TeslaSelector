@@ -57,6 +57,9 @@
       'err.generic': '發生錯誤，請稍後再試。', 'err.noFree': '這個版本沒有可用的免費模型。', 'err.generator': '前端不支援這個模型產生器：{g}',
       'err.noTrims': '目錄中沒有可用的 Model Y 版本。',
       'ex.ppf': '犀牛皮 PPF', 'ex.shade': '天窗遮陽簾', 'ex.rim': '輪框保護圈', 'ex.spoiler': '尾翼',
+      'site.name': '配件檢視器', 'menu': '選單', 'menu.builds': '我的配置清單', 'menu.language': '語言', 'menu.theme': '主題', 'soon': '即將推出',
+      'member.guest': '訪客', 'member.guestNote': '登入後可在不同裝置保存配置清單。', 'member.signIn': '登入／註冊', 'member.account': '帳號：{name}',
+      'theme.auto': '跟隨系統', 'theme.lightTitle': '淺色', 'theme.darkTitle': '深色', 'loading.model': '正在載入車型…',
       'sep': '、'
     },
     en: {
@@ -110,6 +113,9 @@
       'err.generic': 'Something went wrong. Please try again.', 'err.noFree': 'No free model is available for this trim.', 'err.generator': 'Unsupported model generator: {g}',
       'err.noTrims': 'No Model Y trims are available in the catalog.',
       'ex.ppf': 'Paint protection film (PPF)', 'ex.shade': 'Glass roof sunshade', 'ex.rim': 'Rim protector', 'ex.spoiler': 'Rear spoiler',
+      'site.name': 'Accessory Viewer', 'menu': 'Menu', 'menu.builds': 'My builds', 'menu.language': 'Language', 'menu.theme': 'Theme', 'soon': 'Coming soon',
+      'member.guest': 'Guest', 'member.guestNote': 'Sign in to keep your builds across devices.', 'member.signIn': 'Sign in / Sign up', 'member.account': 'Account: {name}',
+      'theme.auto': 'System', 'theme.lightTitle': 'Light', 'theme.darkTitle': 'Dark', 'loading.model': 'Loading the model…',
       'sep': ', '
     }
   };

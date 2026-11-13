@@ -98,7 +98,7 @@ npx serve frontend -l 5173
 
 ## 前端介面設定
 
-版面：3D 滿版，頂部是版本分段鈕、語言、主題與導購按鈕。寬度 ≥1025px 時右側為浮動面板（規格／配件／車門／車漆分頁）；平板與手機改成底部抽屜，點把手或上下拖曳可展開／收合。
+版面：最上方是網站工具列（左側 logo 與網站名稱，右側會員名稱、頭像與選單），下方車型列放版本分段鈕、語言、主題與導購按鈕，3D 滿版。寬度 ≥1025px 時右側為浮動面板（規格／配件／車門／車漆分頁）；平板與手機改成底部抽屜，點把手或上下拖曳可展開／收合。
 
 | 項目 | 設定位置 | 說明 |
 |---|---|---|
@@ -106,6 +106,9 @@ npx serve frontend -l 5173
 | Google Analytics | `config.js` 的 `analytics.gaMeasurementId` | 填入 `G-XXXXXXXXXX` 才載入 gtag。事件：`referral_click`、`select_trim`、`select_paint`、`add_accessory`、`copy_list`、`change_language`、`change_theme` |
 | 廣告版位 | `config.js` 的 `ads` | `enabled: false` 時全部隱藏。網址加 `?ads=preview` 可看版位位置。`panel`：網頁版面板底部 320×100；`native`：配件清單中的贊助卡片；`banner`：網頁 3D 區底部 728×90（1025–1220px 為 468×60）、平板抽屜底部 728×90、手機抽屜底部 320×50。接上廣告聯播網時修改 `site.js` 的 `renderAd()` |
 | 語言 | 頂部 EN／中 按鈕，或網址 `?lang=en` | 預設繁體中文，選擇存在 localStorage。資料庫目前只有中文名稱，英文名稱依 `code` 寫在 `i18n.js` 的 `DATA_EN`，沒有對照的顯示中文；使用者自訂的配件與產品名稱不翻譯 |
+| 網站名稱與 logo | `config.js` 的 `site.name`（依語系）、`site.logo`（圖片網址） | 未填時顯示「配件檢視器」與內建圖示 |
+| 會員 | `AV.setMember({ name, avatarUrl })` | 目前沒有登入功能，固定顯示「訪客」；選單中的登入／註冊與我的配置清單先標示「即將推出」。有頭像網址時顯示圖片，否則顯示名稱第一個字 |
+| 載入動畫 | `AV.stageLoading(true / false)` | 首次載入顯示全頁圓點動畫；之後切換版本等等待超過 180ms 時，3D 區中央顯示圓點動畫。系統開啟「減少動態效果」時改為淡入淡出 |
 | 主題 | 頂部主題按鈕 | 預設跟隨裝置系統的深淺色設定。每按一下切換畫面上的深淺色；切回與系統相同的顏色時，自動恢復跟隨系統。選擇存在 localStorage |
 
 ## 部署前端到 GitHub Pages
