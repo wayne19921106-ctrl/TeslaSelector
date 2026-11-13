@@ -650,6 +650,9 @@
     const oc = S.car.openingFor(h.partCode, h.p);
     if (!oc) return;
     S.car.setOpen(oc, !S.car.isOpen(oc), REDUCE); renderOpenings();
+    // 開關車門或前後廂時，面板切到「車門」（收合時一併展開）
+    if (isCollapsed()) setCollapsed(false);
+    setTab('doors');
     toast(t(S.car.isOpen(oc) ? 't.opened' : 't.closed', { name: openingName(S.car.pivots[oc].def) }));
   });
   canvas.addEventListener('pointermove', (e) => {
