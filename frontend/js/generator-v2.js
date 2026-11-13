@@ -304,11 +304,18 @@
     return { uniforms, glassRegion, boxKind, moves, SIDE, glassOn: !!gd, archOn: !!wa };
   }
 
-  function shellMaterial(THREE, tint, surface, keep, cuts, detail) {
+  /**
+   * 外殼材質。玻璃（glassOpt.opacity < 1）為半透明：玻璃部分照 opacity，車身色縱樑／柱子與黑色窗框不透明。
+   * side 指定單面，透明玻璃分背面、正面兩次繪製，兩側車窗重疊時才不會因三角形順序而忽有忽無。
+   */
+  function shellMaterial(THREE, tint, surface, keep, cuts, detail, glassOpt, side) {
+    const clear = surface === 'glass' && glassOpt && glassOpt.opacity < 1;
     const m = surface === 'body'
       ? new THREE.MeshPhysicalMaterial({ color: 0xe9eae7, metalness: 0.15, roughness: 0.32, clearcoat: 1, clearcoatRoughness: 0.08 })
-      : new THREE.MeshPhysicalMaterial({ color: 0x0b0e12, metalness: 0.6, roughness: 0.06, clearcoat: 1, clearcoatRoughness: 0.03 });
-    m.side = THREE.DoubleSide;
+      : clear
+        ? new THREE.MeshPhysicalMaterial({ color: glassOpt.color, metalness: 0, roughness: 0.05, clearcoat: 0.5, clearcoatRoughness: 0.03, transparent: true })
+        : new THREE.MeshPhysicalMaterial({ color: 0x0b0e12, metalness: 0.6, roughness: 0.06, clearcoat: 1, clearcoatRoughness: 0.03 });
+    m.side = side != null ? side : THREE.DoubleSide;
     const cmin = [], cmax = [], ckind = [];
     for (let i = 0; i < 8; i++) {
       const b = cuts && cuts[i];
@@ -322,7 +329,8 @@
       uKMax: { value: new THREE.Vector3(...(keep ? keep.max : [0, 0, 0])) },
       uCMin: { value: cmin }, uCMax: { value: cmax }, uCKind: { value: ckind }, uKKind: { value: keep && keep.kind ? keep.kind : 0 },
       uGOn: { value: surface === 'glass' && detail.glassOn ? 1 : 0 },
-      uArchOn: { value: surface === 'body' && detail.archOn ? 1 : 0 }
+      uArchOn: { value: surface === 'body' && detail.archOn ? 1 : 0 },
+      uGlassA: { value: clear ? glassOpt.opacity : 1 }
     };
     m.onBeforeCompile = (sh) => {
       Object.assign(sh.uniforms, tint, detail.uniforms, own);
@@ -335,7 +343,7 @@
         'uniform float uHOn, uSOn, uSeam, uMode;',
         'uniform vec3 uCMin[8];', 'uniform vec3 uCMax[8];',
         'varying float vZn;',
-        'uniform float uGOn, uArchOn, uKKind;', 'uniform float uCKind[8];', 'uniform vec3 uGP;', 'uniform vec2 uPaintMR;', 'uniform vec3 uPaintC, uTrimC;', 'uniform vec4 uArch;',
+        'uniform float uGOn, uArchOn, uKKind, uGlassA;', 'uniform float uCKind[8];', 'uniform vec3 uGP;', 'uniform vec2 uPaintMR;', 'uniform vec3 uPaintC, uTrimC;', 'uniform vec4 uArch;',
         'uniform vec2 uHdr[2];', 'uniform vec2 uPil[2];', 'uniform vec2 uFrit[2];', 'uniform vec2 uDA[16];', 'uniform vec2 uDB[16];',
         'float gPaint = 0.0, gTrim = 0.0, gDark = 0.0;',   // 車身色、黑色飾條、輪拱的遮罩，後面用來調整粗糙度與金屬度
         'float inBox(vec3 a, vec3 b){ vec3 s = step(a, vLoc) * step(vLoc, b); return s.x*s.y*s.z; }',
@@ -406,7 +414,9 @@
         float h = uHOn * max(inBox(uHMin, uHMax), inBox(uH2Min, uH2Max));
         float s = uSOn * max(inBox(uSMin, uSMax), inBox(uS2Min, uS2Max));
         diffuseColor.rgb = mix(diffuseColor.rgb, uTint, max(s * 0.6, h * 0.32) * (1.0 - gPaint));
-        if (!gl_FrontFacing) diffuseColor.rgb = vec3(0.045);`)
+        float gSolid = max(gPaint, gTrim);   // 玻璃罩上的不透明部分
+        if (!gl_FrontFacing) diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.045), uGlassA < 1.0 ? gSolid : 1.0);
+        diffuseColor.a = mix(uGlassA, 1.0, gSolid);`)
         .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
         roughnessFactor = mix(mix(mix(roughnessFactor, uPaintMR.y, gPaint), 0.85, gTrim), 0.9, gDark);
         metalnessFactor = mix(mix(mix(metalnessFactor, uPaintMR.x, gPaint), 1.0, gTrim), 0.0, gDark);   // 黑邊：金屬度拉滿讓反射率跟著底色變暗`)
@@ -448,6 +458,9 @@
 
     const tint = { body: makeTint(THREE, params.seams), glass: makeTint(THREE, null) };
     const detail = makeDetail(THREE, params);
+    // 車窗玻璃：預設半透明（opacity 0.2，參考模型為 0.25 的白色透光玻璃），greenhouse.glass 可調；opacity = 1 恢復不透明深色玻璃
+    const gp = (params.greenhouse && params.greenhouse.glass) || {};
+    const glassOpt = { opacity: gp.opacity != null ? gp.opacity : 0.2, color: new THREE.Color(gp.color || '#1a2026') };
     const znOf = glassGeo.userData.znOf;
     // 玻璃罩上的開啟範圍加上種類（車門／尾門），決定帶走玻璃罩的哪一部分
     const ops = openings.map((o) => ({ ...o, glassRegion: o.glassRegion ? { ...o.glassRegion, kind: detail.boxKind(o.glassRegion) } : o.glassRegion }));
@@ -466,17 +479,27 @@
     const inRegion = (ref, b, surface, znv) => inBox(ref, b) && (surface !== 'glass' || detail.moves(b.kind, ref, znv));
     const bodyTopY = params.cabin_cuts.glass.max[1];   // 玻璃罩從這個高度以上才看得到
     function shell(geo, surface, keep, cuts) {
-      const mat = shellMaterial(THREE, tint[surface], surface, keep, cuts, detail);
+      const clear = surface === 'glass' && glassOpt.opacity < 1;
+      const mat = shellMaterial(THREE, tint[surface], surface, keep, cuts, detail, glassOpt, clear ? THREE.FrontSide : null);
       if (surface === 'body') paintMats.push(mat);
       disposables.push(mat);
       const m = new THREE.Mesh(geo, mat);
+      if (clear) {
+        // 先畫背面（另一側車窗、車內看到的面）再畫正面
+        const backMat = shellMaterial(THREE, tint[surface], surface, keep, cuts, detail, glassOpt, THREE.BackSide);
+        disposables.push(backMat);
+        const back = new THREE.Mesh(geo, backMat);
+        back.renderOrder = 1; m.renderOrder = 2;
+        back.raycast = () => {};   // 點選只看正面
+        m.add(back);
+      }
       m.userData.surface = surface;
       if (keep) m.userData.keep = keep; else m.userData.cuts = cuts;
       pickables.push(m);
       return m;
     }
     const body = shell(bodyGeo, 'body', null, bodyCuts); body.castShadow = body.receiveShadow = true; group.add(body);
-    const glass = shell(glassGeo, 'glass', null, glassCuts); glass.castShadow = true; group.add(glass);
+    const glass = shell(glassGeo, 'glass', null, glassCuts); glass.castShadow = glassOpt.opacity >= 1; group.add(glass);
 
     // 開啟件：同一份外殼幾何，只保留自己的範圍，掛在鉸鏈上旋轉
     const pivots = {};
