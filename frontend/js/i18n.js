@@ -57,7 +57,12 @@
       'ex.ppf': '犀牛皮 PPF', 'ex.shade': '天窗遮陽簾', 'ex.rim': '輪框保護圈', 'ex.spoiler': '尾翼',
       'site.name': '配件檢視器', 'menu': '選單', 'menu.builds': '我的配置清單', 'menu.language': '語言', 'menu.theme': '主題', 'soon': '即將推出',
       'member.guest': '訪客', 'member.guestNote': '登入後可在不同裝置保存配置清單。', 'member.signIn': '登入／註冊', 'member.account': '帳號：{name}',
-      'theme.auto': '跟隨系統', 'theme.lightTitle': '淺色', 'theme.darkTitle': '深色', 'loading.model': '正在載入車型…', 'panel.collapse': '收合面板', 'panel.expand': '展開面板',
+      'theme.auto': '跟隨系統', 'theme.lightTitle': '淺色', 'theme.darkTitle': '深色', 'panel.collapse': '收合面板', 'panel.expand': '展開面板', 'loading.model': '正在載入車型…', 'model.loadingGlb': '正在載入 GLB 模型…',
+      'model': '模型', 'model.test': '測試', 'model.parametric': '參數化模型', 'model.glb': 'GLB 檔案',
+      'model.pick': '選擇 .glb 檔案', 'model.note': '檔案只在這個瀏覽器內讀取，不會上傳。',
+      'model.loading': '正在讀取 {name}…', 'model.loaded': '已載入 {name}（{mb} MB）', 'model.switched': '已切換為{name}',
+      'model.credit': '模型：{title} · {author} · {license}', 'model.fail': '無法讀取這個 .glb 檔案：{msg}',
+      'doors.none': '這個模型的車門與前後廂沒有拆成獨立零件，無法開關。',
       'sep': '、'
     },
     en: {
@@ -111,7 +116,12 @@
       'ex.ppf': 'Paint protection film (PPF)', 'ex.shade': 'Glass roof sunshade', 'ex.rim': 'Rim protector', 'ex.spoiler': 'Rear spoiler',
       'site.name': 'Accessory Viewer', 'menu': 'Menu', 'menu.builds': 'My builds', 'menu.language': 'Language', 'menu.theme': 'Theme', 'soon': 'Coming soon',
       'member.guest': 'Guest', 'member.guestNote': 'Sign in to keep your builds across devices.', 'member.signIn': 'Sign in / Sign up', 'member.account': 'Account: {name}',
-      'theme.auto': 'System', 'theme.lightTitle': 'Light', 'theme.darkTitle': 'Dark', 'loading.model': 'Loading the model…', 'panel.collapse': 'Collapse panel', 'panel.expand': 'Expand panel',
+      'theme.auto': 'System', 'theme.lightTitle': 'Light', 'theme.darkTitle': 'Dark', 'panel.collapse': 'Collapse panel', 'panel.expand': 'Expand panel', 'loading.model': 'Loading the model…', 'model.loadingGlb': 'Loading the GLB model…',
+      'model': 'Model', 'model.test': 'Test', 'model.parametric': 'Parametric', 'model.glb': 'GLB file',
+      'model.pick': 'Choose a .glb file', 'model.note': 'The file is read in this browser only and is never uploaded.',
+      'model.loading': 'Reading {name}…', 'model.loaded': 'Loaded {name} ({mb} MB)', 'model.switched': 'Switched to the {name} model',
+      'model.credit': 'Model: {title} · {author} · {license}', 'model.fail': 'Couldn’t read this .glb file: {msg}',
+      'doors.none': 'This model’s doors, frunk and tailgate aren’t separate parts, so they can’t open.',
       'sep': ', '
     }
   };

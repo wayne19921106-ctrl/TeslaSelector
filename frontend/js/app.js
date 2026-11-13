@@ -16,7 +16,8 @@
     trimCache: {}, assetCache: {}, build: null, trim: null, asset: null, car: null,
     sel: null, hover: null, pending: null, busy: false, placeable: new Set(),
     brands: [], openForm: null,   // openForm：正在填自訂產品表單的配件 id
-    tab: 'acc'
+    tab: 'acc',
+    modelSrc: 'parametric', glb: null   // glb：{ gltf, info, name, size }（測試用，從本機檔案讀取）
   };
 
   /* ---------- 名稱（依語系） ---------- */
@@ -93,12 +94,15 @@
     const summary = trim.assets.find((a) => a.assetType === 'parametric' && a.tier === 'free');
     if (!summary) throw new Error(t('err.noFree'));
     const asset = await getAsset(summary.id);
-    const gen = AV.generators[asset.generator];
-    if (!gen) throw new Error(t('err.generator', { g: asset.generator }));
+    const useGlb = S.modelSrc === 'glb' && S.glb;
+    const genKey = useGlb ? 'gltf@1' : asset.generator;
+    const gen = AV.generators[genKey];
+    if (!gen) throw new Error(t('err.generator', { g: genKey }));
 
     const openState = S.car ? Object.fromEntries(S.car.openings.map((o) => [o.code, S.car.isOpen(o.code)])) : {};
     if (S.car) S.car.dispose();
-    S.car = gen({ THREE, params: asset.params, spec: trim.specs, tires: trim.tires, mappings: asset.partMappings, openings: asset.openings, variant: trim.styleVariant });
+    // .glb 也使用參數化模型的 params 與部位範圍，讓同一個標註在兩種模型上落在同一個車項
+    S.car = gen({ THREE, gltf: useGlb ? S.glb.gltf : null, params: asset.params, spec: trim.specs, tires: trim.tires, mappings: asset.partMappings, openings: asset.openings, variant: trim.styleVariant });
     scene.add(S.car.group);
     for (const [code, open] of Object.entries(openState)) S.car.setOpen(code, open, true);
     S.car.step(0);
@@ -106,7 +110,7 @@
     S.placeable = new Set(asset.partMappings.map((m) => m.partCode));   // 模型上點得到的車項
     controls.target.y = (trim.specs.heightMm / 1000) * 0.45;
     applyPaint();
-    renderTrim(); renderOpenings(); renderSwatches();
+    renderTrim(); renderOpenings(); renderSwatches(); renderModelTools();
   }
 
   function applyPaint() {
@@ -281,6 +285,9 @@
 
   function renderOpenings() {
     const box = $('#opens'); box.textContent = '';
+    const none = !S.car.openings.length;
+    document.querySelector('.opens-all').hidden = none;
+    if (none) { box.appendChild(el('p', 'doors-none', esc(t('doors.none')))); return; }
     for (const o of S.car.openings) {
       const b = document.createElement('button'); b.type = 'button'; b.className = 'tg';
       const open = S.car.isOpen(o.code);
@@ -320,6 +327,69 @@
       `<optgroup label="${esc(groupName(g.name))}">${g.items.map((p) => `<option value="${esc(p.code)}">${esc(partName(p.code))}</option>`).join('')}</optgroup>`).join('');
     $('#partSel').value = S.sel || '';
   }
+
+  /* ---------- 模型來源（測試） ---------- */
+  const devTools = (() => {
+    try { return !!(window.APP_CONFIG || {}).devTools || new URLSearchParams(location.search).get('dev') === '1'; } catch (e) { return false; }
+  })();
+  function renderModelTools() {
+    $('#modelTools').hidden = !devTools;
+    document.querySelectorAll('.model-seg [role="radio"]').forEach((b) => {
+      b.setAttribute('aria-checked', b.dataset.src === S.modelSrc);
+      b.disabled = b.dataset.src === 'glb' && !S.glb;
+    });
+    if (S.glb) $('#modelInfo').textContent = t('model.loaded', { name: S.glb.name, mb: (S.glb.size / 1048576).toFixed(1) });
+    const cr = $('#modelCredit'), info = S.modelSrc === 'glb' && S.glb && S.glb.info;
+    cr.hidden = !(info && (info.title || info.author));
+    if (!cr.hidden) {
+      cr.textContent = t('model.credit', { title: info.title || S.glb.name, author: (info.author || '').replace(/\s*\(.*\)$/, ''), license: (info.license || '').replace(/\s*\(.*\)$/, '') });
+      cr.title = [info.source, info.license].filter(Boolean).join(' · ');
+    }
+  }
+  async function setModelSrc(src) {
+    if (src === S.modelSrc || (src === 'glb' && !S.glb)) return;
+    await run(async () => {
+      S.modelSrc = src;
+      await loadTrim(S.build.trimId);
+      renderAll();
+      toast(t('model.switched', { name: t('model.' + src) }));
+      site.track('switch_model', { source: src });
+    });
+  }
+  document.querySelectorAll('.model-seg [role="radio"]').forEach((b) => b.addEventListener('click', () => setModelSrc(b.dataset.src)));
+  let loaderReady = null;
+  function loadGltfLoader() {
+    if (THREE.GLTFLoader) return Promise.resolve();
+    return (loaderReady = loaderReady || new Promise((resolve, reject) => {
+      const sc = document.createElement('script');
+      sc.src = 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js';
+      sc.onload = resolve; sc.onerror = () => { loaderReady = null; reject(new Error('GLTFLoader')); };
+      document.head.appendChild(sc);
+    }));
+  }
+  $('#glbFile').addEventListener('change', async (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    $('#modelInfo').textContent = t('model.loading', { name: f.name });
+    await run(async () => {
+      stageLoading(true, 'model.loadingGlb');
+      try {
+        await loadGltfLoader();
+        const { gltf, info } = await AV.parseGlb(THREE, await f.arrayBuffer());
+        S.glb = { gltf, info, name: f.name, size: f.size };
+      } catch (err) {
+        $('#modelInfo').textContent = t('model.note');
+        stageLoading(false);
+        throw new Error(t('model.fail', { msg: err.message || err }));
+      }
+      S.modelSrc = 'glb';
+      try { await loadTrim(S.build.trimId); } finally { stageLoading(false); }
+      renderAll();
+      toast(t('model.switched', { name: t('model.glb') }));
+      site.track('switch_model', { source: 'glb' });
+    });
+  });
 
   /* ---------- Accessory helpers ---------- */
   const selectedOf = (a) => { const c = a.products.find((x) => x.isSelected); return c ? c.product : null; };
@@ -535,6 +605,7 @@
     if (!S.build) return;
     renderPartSel(); renderTrim(); renderOpenings(); renderSwatches(); renderAll();
     setSheet(panel.classList.contains('expanded'));
+    renderModelTools();
   }
 
   /* ---------- Accessory actions ---------- */

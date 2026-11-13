@@ -506,4 +506,15 @@
       dispose() { if (group.parent) group.parent.remove(group); for (const d of disposables) d.dispose && d.dispose(); }
     };
   };
+
+  /** 給其他模型來源（例如 .glb）共用：依參數化模型的參考外殼與規格建立「參考座標 ↔ 實際尺寸」映射。 */
+  AV.parametricKit = {
+    inBox, makeTint,
+    mappingFor(THREE, params, spec) {
+      const b = refShell(THREE, params.body), g = refShell(THREE, params.greenhouse);
+      const bbox = b.boundingBox.clone().union(g.boundingBox);
+      b.dispose(); g.dispose();
+      return makeMapping(THREE, bbox, params, spec);
+    }
+  };
 })();

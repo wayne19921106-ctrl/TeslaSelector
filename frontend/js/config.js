@@ -24,6 +24,9 @@
     // panel：網頁版面板底部 320×100；native：配件清單中的贊助卡片；
     // banner：網頁版 3D 區底部 728×90、平板抽屜底部 728×90、手機抽屜底部 320×50。
     // preview = true 時顯示灰色佔位框（等同網址加 ?ads=preview）。
-    ads: { enabled: false, preview: false, slots: ['panel', 'native', 'banner'] }
+    ads: { enabled: false, preview: false, slots: ['panel', 'native', 'banner'] },
+
+    // 開發測試工具（規格分頁的「模型：參數化／GLB 檔案」切換）。網址加 ?dev=1 也會開啟。
+    devTools: false
   };
 })();
