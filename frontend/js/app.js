@@ -516,7 +516,6 @@
     if (!S.build) return;
     renderPartSel(); renderTrim(); renderOpenings(); renderSwatches(); renderAll();
     setSheet(panel.classList.contains('expanded'));
-    renderThemeBtn();
   }
 
   /* ---------- Accessory actions ---------- */
@@ -691,31 +690,10 @@
     site.track('copy_list', { count: acc.length });
   });
 
-  // 語系
-  $('#langBtn').addEventListener('click', () => {
-    const next = I.lang === 'en' ? 'zh-Hant' : 'en';
-    I.setLang(next);
-    site.track('change_language', { language: next });
-  });
+  // 語言與主題都在右上選單中切換
   I.onChange(rerender);
-
-  // 主題：按一下切換深淺色；切到與系統相同的顏色時改回「跟隨系統」
-  function renderThemeBtn() {
-    const b = $('#themeBtn');
-    const eff = AV.theme ? AV.theme.effective : 'light', auto = !AV.theme || AV.theme.mode === 'auto';
-    b.dataset.mode = eff;
-    const label = t('theme.label', { theme: t('theme.' + eff) }) + (auto ? t('theme.followSystem') : '') +
-      t('theme.switchTo', { theme: t('theme.' + (eff === 'dark' ? 'light' : 'dark')) });
-    b.setAttribute('aria-label', label); b.title = label;
-  }
-  $('#themeBtn').addEventListener('click', () => {
-    if (!AV.theme) return;
-    AV.theme.toggle();
-    site.track('change_theme', { theme: AV.theme.mode });
-  });
-  if (AV.theme) AV.theme.onChange((eff) => { applySceneTheme(eff); renderThemeBtn(); renderMenu(); });
+  if (AV.theme) AV.theme.onChange((eff) => { applySceneTheme(eff); renderMenu(); });
   if (AV.theme) applySceneTheme(AV.theme.effective);
-  renderThemeBtn();
 
   /* ---------- 網站工具列：名稱、logo、會員、選單 ---------- */
   const siteCfg = (window.APP_CONFIG || {}).site || {};

@@ -28,12 +28,6 @@
       try { localStorage.setItem(KEY, next); } catch (e) { /* 只在本頁有效 */ }
       apply();
     },
-    /** 每次都切換畫面上看到的深淺色；切到與系統相同的顏色時改回 auto（繼續跟隨系統）。 */
-    toggle() {
-      const next = effective() === 'dark' ? 'light' : 'dark';
-      const system = mq.matches ? 'dark' : 'light';
-      this.set(next === system ? 'auto' : next);
-    },
     onChange(fn) { listeners.push(fn); }
   };
   apply();
