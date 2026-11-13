@@ -153,6 +153,7 @@
     const pickables = [];
     const disposables = [];
     const paintMats = [];
+    const seatMats = [];   // 座椅材質，setInterior 換色
     const meshParts = {};      // partCode -> [mesh]
     const meshKeyToPart = {};
     const zones = { body: [], glass: [] };
@@ -382,15 +383,16 @@
         if (rot) { m.rotation.order = 'ZYX'; m.rotation.set(rot[0], rot[1], rot[2]); }
         group.add(m); return m;
       };
+      const seat = () => { const m = std(0x2c2f34); seatMats.push(m); return m; };
       add('floor', box(3.0, 0.06, 1.6 * map.kz), std(0x17191c), [-0.45, 0.34, 0]);
       for (const z of [-0.38, 0.38]) {
-        add('seat-front', box(0.5, 0.14, 0.5), std(0x2c2f34), [0.18, 0.5, z]);
-        add('front-seatback', box(0.14, 0.62, 0.48), std(0x2c2f34), [-0.14, 0.86, z], [0, 0, 0.2]);
-        add('seat-front', box(0.1, 0.18, 0.28), std(0x2c2f34), [-0.24, 1.26, z], [0, 0, 0.2]);
+        add('seat-front', box(0.5, 0.14, 0.5), seat(), [0.18, 0.5, z]);
+        add('front-seatback', box(0.14, 0.62, 0.48), seat(), [-0.14, 0.86, z], [0, 0, 0.2]);
+        add('seat-front', box(0.1, 0.18, 0.28), seat(), [-0.24, 1.26, z], [0, 0, 0.2]);
       }
-      add('seat-rear', box(0.5, 0.14, 1.4), std(0x2c2f34), [-0.85, 0.5, 0]);
-      add('rear-seatback', box(0.14, 0.6, 1.4), std(0x2c2f34), [-1.17, 0.86, 0], [0, 0, 0.25]);
-      for (const z of [-0.45, 0, 0.45]) add('seat-rear', box(0.09, 0.15, 0.26), std(0x2c2f34), [-1.27, 1.24, z], [0, 0, 0.25]);
+      add('seat-rear', box(0.5, 0.14, 1.4), seat(), [-0.85, 0.5, 0]);
+      add('rear-seatback', box(0.14, 0.6, 1.4), seat(), [-1.17, 0.86, 0], [0, 0, 0.25]);
+      for (const z of [-0.45, 0, 0.45]) add('seat-rear', box(0.09, 0.15, 0.26), seat(), [-1.27, 1.24, z], [0, 0, 0.25]);
       add('console', box(0.75, 0.22, 0.22), std(0x202327), [0.3, 0.5, 0]);
       add('dash', box(0.45, 0.22, 1.55 * map.kz), std(0x1f2226), [0.92, 0.86, 0]);
       add('screen', box(0.025, 0.24, 0.38), std(0x0a0c0f, { emissive: 0x2a4a6a, emissiveIntensity: 0.9, roughness: 0.2 }), [0.66, 1.08, 0], [0, 0, 0.15]);
@@ -487,6 +489,10 @@
           u['u' + slot + '2Min'].value.fromArray(b.min); u['u' + slot + '2Max'].value.fromArray(b.max);
           u['u' + slot + 'On'].value = 1;
         }
+      },
+      setInterior(code) {   // 內裝顏色：black / white（座椅、椅背、頭枕）
+        const s = { black: 0x2c2f34, white: 0xdcd9d2 }[code] || 0x2c2f34;
+        for (const m of seatMats) m.color.setHex(s);
       },
       setPaint(c) {
         for (const m of paintMats) { m.color.set(c.hex); m.metalness = +c.metalness; m.roughness = +c.roughness; }

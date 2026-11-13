@@ -114,6 +114,7 @@
     const colors = S.trim.paintColors;
     const c = colors.find((x) => x.id === S.build.paintColorId) || colors[0];
     if (c) S.car.setPaint(c);
+    if (S.car.setInterior) S.car.setInterior(S.build.interiorColor || 'black');
   }
 
   /* ---------- Picking ---------- */
@@ -307,6 +308,22 @@
       box.appendChild(b);
     }
     $('#swname').textContent = cur ? paintName(cur) : '';
+
+    // 內裝：黑色／白色（座椅、椅背、頭枕）
+    const ibox = $('#intSwatches'); ibox.textContent = '';
+    const icur = S.build.interiorColor || 'black';
+    for (const [code, hex] of [['black', '#1d1f22'], ['white', '#e6e3dc']]) {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'sw';
+      b.style.background = hex; b.title = t('interior.' + code); b.setAttribute('aria-label', t('interior.' + code));
+      b.setAttribute('aria-pressed', code === icur);
+      b.addEventListener('click', () => run(async () => {
+        S.build = await S.client.updateBuild(S.build.id, { interiorColor: code });
+        applyPaint(); renderSwatches();
+        site.track('select_interior', { interior: code });
+      }));
+      ibox.appendChild(b);
+    }
+    $('#intName').textContent = t('interior.' + icur);
   }
 
   function renderPartSel() {

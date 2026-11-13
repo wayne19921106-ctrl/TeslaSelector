@@ -55,6 +55,7 @@
       const r = (Math.random() * 16) | 0; return (c === 'x' ? r : (r & 3) | 8).toString(16);
     }));
   const STATUSES = ['purchased', 'installed'];
+  const INTERIORS = ['black', 'white'];
   const trimOrNull = (v) => (v == null || String(v).trim() === '' ? null : String(v).trim());
 
   class MockClient {
@@ -83,7 +84,7 @@
         'mirror-L': 'mirror', 'mirror-R': 'mirror', 'sidewin-L': 'side-glass', 'sidewin-R': 'side-glass' };
       const out = {};
       for (const ob of Object.values(old)) {
-        const b = { id: ob.id, name: ob.name, trimId: ob.trimId, paintColorId: ob.paintColorId ?? null,
+        const b = { id: ob.id, name: ob.name, trimId: ob.trimId, paintColorId: ob.paintColorId ?? null, interiorColor: ob.interiorColor || 'black',
           createdAt: ob.createdAt, updatedAt: ob.updatedAt, accessories: [], customTypes: [], customProducts: [], seq: 0 };
         out[b.id] = b;
         for (const oa of ob.accessories || []) {
@@ -125,13 +126,16 @@
     // ---- 配置清單 ----
     view(b) {   // 回傳給介面的 BuildDto（不含內部欄位）
       const { customTypes, customProducts, seq, ...dto } = b;
+      dto.interiorColor = dto.interiorColor || 'black';   // 舊版存檔沒有內裝欄位
       return clone(dto);
     }
-    async createBuild({ name, trimId, paintColorId }) {
+    async createBuild({ name, trimId, paintColorId, interiorColor }) {
       if (!this.data.trims[trimId]) return this.invalid('找不到這個版本。');
       if (paintColorId != null && !this.colorFits(paintColorId, trimId)) return this.invalid('這個車漆不適用於所選版本。');
+      if (interiorColor != null && !INTERIORS.includes(interiorColor)) return this.invalid('內裝顏色只能是 black 或 white。');
       const t = now();
       const b = { id: uuid(), name: (name || '我的 Model Y').trim(), trimId, paintColorId: paintColorId ?? null,
+        interiorColor: interiorColor || 'black',
         createdAt: t, updatedAt: t, accessories: [], customTypes: [], customProducts: [], seq: 0 };
       this.builds[b.id] = b; this.persist();
       return this.view(b);
@@ -143,8 +147,10 @@
       if (!this.data.trims[trimId]) return this.invalid('找不到這個版本。');
       const colorId = body.paintColorId ?? b.paintColorId;
       if (colorId != null && !this.colorFits(colorId, trimId)) return this.invalid('這個車漆不適用於所選版本。');
+      if (body.interiorColor != null && !INTERIORS.includes(body.interiorColor)) return this.invalid('內裝顏色只能是 black 或 white。');
       if (body.name) b.name = body.name.trim();
       b.trimId = trimId; b.paintColorId = colorId; this.touch(b);
+      if (body.interiorColor) b.interiorColor = body.interiorColor;
       return this.view(b);
     }
 

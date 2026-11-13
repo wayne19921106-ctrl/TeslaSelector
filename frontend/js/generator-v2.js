@@ -9,6 +9,8 @@
   AV.generators = AV.generators || {};
 
   const ACCENT = 0xf0a020;
+  // 內裝顏色（座椅、椅背、頭枕）；白色為米白皮革
+  const INTERIOR = { black: { color: 0x1d1f22, roughness: 0.82 }, white: { color: 0xe6e3dc, roughness: 0.7 } };
   const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
   const inBox = (p, b) => p.x >= b.min[0] && p.x <= b.max[0] && p.y >= b.min[1] && p.y <= b.max[1] && p.z >= b.min[2] && p.z <= b.max[2];
 
@@ -436,6 +438,7 @@
     const pickables = [];
     const disposables = [];
     const paintMats = [];
+    const seatMats = [];   // 座椅材質，setInterior 換色
     const meshParts = {};      // partCode -> [mesh]
     const meshKeyToPart = {};
     const zones = { body: [], glass: [] };
@@ -928,7 +931,7 @@
         g.translate(0, 0, -(w - 2 * r) / 2);
         return g;
       };
-      const leather = () => std(0x1d1f22, { roughness: 0.82, metalness: 0.0, envMapIntensity: 0.6 });   // 黑色內裝，霧面
+      const leather = () => { const m = std(0x1d1f22, { roughness: 0.82, metalness: 0.0, envMapIntensity: 0.6 }); seatMats.push(m); return m; };   // 座椅皮革，霧面；setInterior 換色
       const trimDark = () => std(0x17191b, { roughness: 0.75, envMapIntensity: 0.6 });
 
       add('floor', box(3.0, 0.06, 1.6 * map.kz), std(0x17191c), [-0.45, 0.39, 0]);
@@ -1081,6 +1084,10 @@
           u['u' + slot + '2Min'].value.fromArray(b.min); u['u' + slot + '2Max'].value.fromArray(b.max);
           u['u' + slot + 'On'].value = 1;
         }
+      },
+      setInterior(code) {   // 內裝顏色：black / white（座椅、椅背、頭枕）
+        const s = INTERIOR[code] || INTERIOR.black;
+        for (const m of seatMats) { m.color.setHex(s.color); m.roughness = s.roughness; }
       },
       setPaint(c) {
         for (const m of paintMats) { m.color.set(c.hex); m.metalness = +c.metalness; m.roughness = +c.roughness; }
