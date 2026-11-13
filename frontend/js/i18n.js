@@ -57,7 +57,7 @@
       'ex.ppf': '犀牛皮 PPF', 'ex.shade': '天窗遮陽簾', 'ex.rim': '輪框保護圈', 'ex.spoiler': '尾翼',
       'site.name': '配件檢視器', 'menu': '選單', 'menu.builds': '我的配置清單', 'menu.language': '語言', 'menu.theme': '主題', 'soon': '即將推出',
       'member.guest': '訪客', 'member.guestNote': '登入後可在不同裝置保存配置清單。', 'member.signIn': '登入／註冊', 'member.account': '帳號：{name}',
-      'theme.auto': '跟隨系統', 'theme.lightTitle': '淺色', 'theme.darkTitle': '深色', 'loading.model': '正在載入車型…',
+      'theme.auto': '跟隨系統', 'theme.lightTitle': '淺色', 'theme.darkTitle': '深色', 'loading.model': '正在載入車型…', 'panel.collapse': '收合面板', 'panel.expand': '展開面板',
       'sep': '、'
     },
     en: {
@@ -111,7 +111,7 @@
       'ex.ppf': 'Paint protection film (PPF)', 'ex.shade': 'Glass roof sunshade', 'ex.rim': 'Rim protector', 'ex.spoiler': 'Rear spoiler',
       'site.name': 'Accessory Viewer', 'menu': 'Menu', 'menu.builds': 'My builds', 'menu.language': 'Language', 'menu.theme': 'Theme', 'soon': 'Coming soon',
       'member.guest': 'Guest', 'member.guestNote': 'Sign in to keep your builds across devices.', 'member.signIn': 'Sign in / Sign up', 'member.account': 'Account: {name}',
-      'theme.auto': 'System', 'theme.lightTitle': 'Light', 'theme.darkTitle': 'Dark', 'loading.model': 'Loading the model…',
+      'theme.auto': 'System', 'theme.lightTitle': 'Light', 'theme.darkTitle': 'Dark', 'loading.model': 'Loading the model…', 'panel.collapse': 'Collapse panel', 'panel.expand': 'Expand panel',
       'sep': ', '
     }
   };
@@ -193,6 +193,7 @@
       r.querySelectorAll('[data-i18n]').forEach((e) => { e.textContent = i18n.t(e.dataset.i18n); });
       r.querySelectorAll('[data-i18n-aria]').forEach((e) => e.setAttribute('aria-label', i18n.t(e.dataset.i18nAria)));
       r.querySelectorAll('[data-i18n-title]').forEach((e) => e.setAttribute('title', i18n.t(e.dataset.i18nTitle)));
+      r.querySelectorAll('[data-i18n-tip]').forEach((e) => e.setAttribute('data-tip', i18n.t(e.dataset.i18nTip)));
       r.querySelectorAll('[data-i18n-ph]').forEach((e) => e.setAttribute('placeholder', i18n.t(e.dataset.i18nPh)));
     }
   };

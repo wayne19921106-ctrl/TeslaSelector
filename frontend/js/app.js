@@ -188,14 +188,33 @@
   }
   const tabBtns = [...document.querySelectorAll('.tabs [role="tab"]')];
   tabBtns.forEach((b, i) => {
-    b.addEventListener('click', () => setTab(b.dataset.tab));
+    b.addEventListener('click', () => { if (isCollapsed()) setCollapsed(false); setTab(b.dataset.tab); });
     b.addEventListener('keydown', (e) => {
-      const k = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+      const k = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 1, ArrowUp: -1 }[e.key];
       if (!k) return;
       e.preventDefault();
       setTab(tabBtns[(i + k + tabBtns.length) % tabBtns.length].dataset.tab, true);
     });
   });
+
+  /* 網頁版面板向右收合（平板與手機的底部抽屜不適用） */
+  const COLLAPSE_KEY = 'av.panelCollapsed';
+  const isCollapsed = () => !sheetMq.matches && panel.classList.contains('collapsed');
+  function setCollapsed(c, save = true) {
+    panel.classList.toggle('collapsed', c);
+    document.body.classList.toggle('panel-collapsed', c);
+    $('.tabs').setAttribute('aria-orientation', c && !sheetMq.matches ? 'vertical' : 'horizontal');
+    const btn = $('#collapseBtn'), key = c ? 'panel.expand' : 'panel.collapse';
+    btn.setAttribute('aria-expanded', !c);
+    btn.dataset.i18nTip = key; btn.dataset.i18nAria = key;
+    btn.dataset.tip = t(key); btn.setAttribute('aria-label', t(key));
+    if (save) { try { localStorage.setItem(COLLAPSE_KEY, c ? '1' : '0'); } catch (e) { /* 只在本頁有效 */ } }
+  }
+  $('#collapseBtn').addEventListener('click', () => {
+    setCollapsed(!panel.classList.contains('collapsed'));
+    site.track('toggle_panel', { collapsed: panel.classList.contains('collapsed') });
+  });
+  try { if (localStorage.getItem(COLLAPSE_KEY) === '1') setCollapsed(true, false); } catch (e) { /* 預設展開 */ }
 
   function setSheet(expanded) {
     panel.classList.toggle('expanded', expanded);
@@ -570,7 +589,7 @@
   function select(code, pos) {
     if (code !== S.sel) S.openForm = null;
     S.sel = code; S.pending = pos;
-    if (code) setTab('acc');
+    if (code) { if (isCollapsed()) setCollapsed(false); setTab('acc'); }
     renderAll();
   }
   function focusAcc(a) {
