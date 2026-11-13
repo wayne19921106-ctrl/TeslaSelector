@@ -67,13 +67,18 @@
     const tapers = (conf.taper || []).filter((t) => t.axis !== 'z');
     const S = conf.sculpt || {};
     // 擠出座標 → 參考座標的完整變換
-    const T = (x, y, z) => {
-      const zn = Math.min(1, Math.abs(z) / c);
+    /** 橫向縮放係數：收窄與輪拱外鼓。 */
+    const kOf = (x, y) => {
       let k = 1;
       for (const t of tapers) k *= 1 - t.amount * taperCurve(t, t.axis === 'x' ? x : y);
       for (const b of S.bulge || []) {
         k *= 1 + b.amount * Math.exp(-(((x - b.x[0]) / b.x[1]) ** 2) - (((y - b.y[0]) / b.y[1]) ** 2));
       }
+      return k;
+    };
+    const T = (x, y, z) => {
+      const zn = Math.min(1, Math.abs(z) / c);
+      const k = kOf(x, y);
       let X = x, Y = y;
       for (const s of S.sweep || []) X -= Math.sign(s.to - s.from) * s.amount * zn * zn * ss(s.from, s.to, x);
       for (const s of S.crest || []) {
@@ -86,8 +91,10 @@
     // 端面頂點改用曲面的精確法向量：端面 (x, y) ↦ T(x, y, ±c) 對 x、y 偏微分的外積。
     // 倒角從端面的切線方向開始，所以交界處不會出現折線。
     const capN = new Float32Array(p.count * 3), h = 1e-4;
+    const zn = new Float32Array(p.count);   // 橫向位置（有正負號）：0 = 中央、±1 = 側面（端面），收窄前的正規化值
     for (let i = 0; i < p.count; i++) {
       const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+      zn[i] = Math.max(-1, Math.min(1, z / c));
       if (Math.abs(Math.abs(z) - c) < 1e-5) {
         const s = Math.sign(z);
         const a1 = T(x + h, y, z), a0 = T(x - h, y, z), b1 = T(x, y + h, z), b0 = T(x, y - h, z);
@@ -98,7 +105,11 @@
       p.setXYZ(i, r[0], r[1], r[2]);
     }
     g.setAttribute('aRef', new THREE.BufferAttribute(Float32Array.from(p.array), 3));
+    g.setAttribute('aZn', new THREE.BufferAttribute(zn, 1));
     g.userData.capNormals = capN;
+    // 參考座標上的點在橫向的位置 |zn|。頂面與圓角精確（玻璃罩沒有 sweep / crest）；
+    // 側面（端面）只有外框有頂點、內部是平面內插，算出來會略小於 1，要用三角形頂點判斷（見 znHit）
+    g.userData.znOf = (r) => Math.min(1, Math.abs(r.z) / (c * kOf(r.x, r.y)));
     g.computeBoundingBox();
     return g;
   }
@@ -165,39 +176,132 @@
     };
   }
 
-  function shellMaterial(THREE, tint, surface, keep, cuts) {
+  /**
+   * 外殼表面細節：玻璃罩上的側窗開口、車柱、車頂縱樑與窗框；車身上的輪拱。都畫在著色器裡，
+   * 所以車門、尾門開啟時會跟著動。glassRegion 是著色器判斷的 JS 版本（點選用），兩邊要一起改。
+   *   greenhouse.detail：
+   *     rail_zn  頂面橫向位置 zn 超過此值為車身色：A 柱、車頂縱樑、尾門兩側
+   *     headers  頂面的車身色橫樑 [[x0, x1], ...]（最多 2 個）：前擋上緣、尾門鉸鏈處
+   *     frits    頂面的黑色霧面橫帶 [[x0, x1], ...]（最多 2 個）：前擋與天窗交界的黑邊
+   *     dlo      側面的車窗開口多邊形 [[x, y], ...]（最多 16 點），開口外為車身色
+   *     frame    窗框飾條寬度
+   *     pillars  開口內的黑色直柱 [[x0, x1], ...]（最多 2 個）：B 柱、後三角窗分隔
+   *     belt_y   側面開口外、低於此高度的車身色屬於車門上緣，隨車門開啟
+   * 開啟件在玻璃罩上帶走的範圍（moves）：車門只帶走側面的車窗與門上緣，A、C 柱留在車身；
+   * 尾門只帶走頂面的玻璃與橫樑，兩側縱樑留在車身。
+   *   body.detail.wheel_arch：{ y, r } 輪軸中心高度與輪拱飾條外緣半徑，半徑內為深色
+   */
+  function makeDetail(THREE, params) {
+    const gd = params.greenhouse.detail || null;
+    const wa = (params.body.detail || {}).wheel_arch || null;
+    const poly = gd ? gd.dlo : [];
+    if (poly.length > 16) throw new Error('greenhouse.detail.dlo 最多 16 點');
+    const ranges = (list) => [0, 1].map((i) => new THREE.Vector2(...((list || [])[i] || [99, -99])));
+    const A = [], B = [];
+    for (let i = 0; i < 16; i++) {
+      A.push(new THREE.Vector2(...(i < poly.length ? poly[i] : [99, 99])));
+      B.push(new THREE.Vector2(...(i < poly.length ? poly[(i + 1) % poly.length] : [99, 99])));
+    }
+    const uniforms = {
+      uGP: { value: new THREE.Vector3(gd ? gd.rail_zn : 9, gd ? gd.frame : 0, gd && gd.belt_y != null ? gd.belt_y : -9) },
+      uHdr: { value: ranges(gd && gd.headers) }, uPil: { value: ranges(gd && gd.pillars) }, uFrit: { value: ranges(gd && gd.frits) },
+      uDA: { value: A }, uDB: { value: B },
+      uPaintC: { value: new THREE.Color(0xe9eae7) }, uPaintMR: { value: new THREE.Vector2(0.15, 0.32) },
+      uTrimC: { value: new THREE.Color((gd && gd.trim_color) || 0x14161a) },
+      uArch: { value: new THREE.Vector4(params.reference.axle_x, wa ? wa.y : 0, wa ? wa.r : 0, 0) }
+    };
+    /** 玻璃罩上的點屬於：glass 玻璃、paint 車身色、trim 窗框、pillar 黑色直柱。 */
+    function glassRegion(ref, znv) {
+      if (!gd) return 'glass';
+      const x = ref.x, y = ref.y;
+      if (znv > 0.995) {
+        let inside = false, dmin = 1e3;
+        for (let i = 0; i < poly.length; i++) {
+          const a = poly[i], b = poly[(i + 1) % poly.length];
+          if ((a[1] > y) !== (b[1] > y) && x < ((b[0] - a[0]) * (y - a[1])) / (b[1] - a[1]) + a[0]) inside = !inside;
+          const abx = b[0] - a[0], aby = b[1] - a[1];
+          const t = Math.min(1, Math.max(0, ((x - a[0]) * abx + (y - a[1]) * aby) / Math.max(abx * abx + aby * aby, 1e-8)));
+          dmin = Math.min(dmin, Math.hypot(x - a[0] - abx * t, y - a[1] - aby * t));
+        }
+        if (!inside) return 'paint';
+        if (dmin < gd.frame) return 'trim';
+        return (gd.pillars || []).some((r) => x > r[0] && x < r[1]) ? 'pillar' : 'glass';
+      }
+      if (znv > gd.rail_zn) return 'paint';
+      return (gd.headers || []).some((r) => x > r[0] && x < r[1]) ? 'paint' : 'glass';   // 黑邊仍算玻璃
+    }
+    const SIDE = 0.995;   // JS 端判斷側面的門檻（射線交點有浮點誤差）
+    /** kind：1 = 車門（範圍整個在車的一側）、2 = 尾門（橫跨中線）、0 = 無條件。 */
+    const boxKind = (b) => (!gd ? 0 : b.max[2] <= 0 || b.min[2] >= 0 ? 1 : 2);
+    function moves(kind, ref, znv) {
+      if (!gd || !kind) return true;
+      if (kind === 1) return znv > SIDE && (glassRegion(ref, 1) !== 'paint' || ref.y < gd.belt_y);
+      return znv <= SIDE && znv <= gd.rail_zn;
+    }
+    return { uniforms, glassRegion, boxKind, moves, SIDE, glassOn: !!gd, archOn: !!wa };
+  }
+
+  function shellMaterial(THREE, tint, surface, keep, cuts, detail) {
     const m = surface === 'body'
       ? new THREE.MeshPhysicalMaterial({ color: 0xe9eae7, metalness: 0.15, roughness: 0.32, clearcoat: 1, clearcoatRoughness: 0.08 })
       : new THREE.MeshPhysicalMaterial({ color: 0x0b0e12, metalness: 0.6, roughness: 0.06, clearcoat: 1, clearcoatRoughness: 0.03 });
     m.side = THREE.DoubleSide;
-    const cmin = [], cmax = [];
+    const cmin = [], cmax = [], ckind = [];
     for (let i = 0; i < 8; i++) {
       const b = cuts && cuts[i];
       cmin.push(new THREE.Vector3(...(b ? b.min : [9, 9, 9])));
       cmax.push(new THREE.Vector3(...(b ? b.max : [-9, -9, -9])));
+      ckind.push(b && b.kind ? b.kind : 0);
     }
     const own = {
       uMode: { value: keep ? 1 : 0 },
       uKMin: { value: new THREE.Vector3(...(keep ? keep.min : [0, 0, 0])) },
       uKMax: { value: new THREE.Vector3(...(keep ? keep.max : [0, 0, 0])) },
-      uCMin: { value: cmin }, uCMax: { value: cmax }
+      uCMin: { value: cmin }, uCMax: { value: cmax }, uCKind: { value: ckind }, uKKind: { value: keep && keep.kind ? keep.kind : 0 },
+      uGOn: { value: surface === 'glass' && detail.glassOn ? 1 : 0 },
+      uArchOn: { value: surface === 'body' && detail.archOn ? 1 : 0 }
     };
     m.onBeforeCompile = (sh) => {
-      Object.assign(sh.uniforms, tint, own);
-      sh.vertexShader = 'attribute vec3 aRef;\nvarying vec3 vLoc;\n' +
-        sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvLoc = aRef;');
+      Object.assign(sh.uniforms, tint, detail.uniforms, own);
+      sh.vertexShader = 'attribute vec3 aRef;\nattribute float aZn;\nvarying vec3 vLoc;\nvarying float vZn;\n' +
+        sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvLoc = aRef; vZn = aZn;');
       sh.fragmentShader = [
         'varying vec3 vLoc;',
         'uniform vec3 uHMin, uHMax, uSMin, uSMax, uH2Min, uH2Max, uS2Min, uS2Max, uTint, uKMin, uKMax, uDoorX, uSeamY;',
         'uniform vec4 uSeamA;',
         'uniform float uHOn, uSOn, uSeam, uMode;',
         'uniform vec3 uCMin[8];', 'uniform vec3 uCMax[8];',
+        'varying float vZn;',
+        'uniform float uGOn, uArchOn, uKKind;', 'uniform float uCKind[8];', 'uniform vec3 uGP;', 'uniform vec2 uPaintMR;', 'uniform vec3 uPaintC, uTrimC;', 'uniform vec4 uArch;',
+        'uniform vec2 uHdr[2];', 'uniform vec2 uPil[2];', 'uniform vec2 uFrit[2];', 'uniform vec2 uDA[16];', 'uniform vec2 uDB[16];',
+        'float gPaint = 0.0, gTrim = 0.0, gDark = 0.0;',   // 車身色、黑色飾條、輪拱的遮罩，後面用來調整粗糙度與金屬度
         'float inBox(vec3 a, vec3 b){ vec3 s = step(a, vLoc) * step(vLoc, b); return s.x*s.y*s.z; }',
         'float line(float v, float at){ return 1.0 - smoothstep(0.0, 0.006, abs(v - at)); }',
         ''
       ].join('\n') + sh.fragmentShader.replace('vec4 diffuseColor = vec4( diffuse, opacity );', `vec4 diffuseColor = vec4( diffuse, opacity );
-        if (uMode < 0.5) { for (int i = 0; i < 8; i++) { if (inBox(uCMin[i], uCMax[i]) > 0.5) discard; } }
-        else if (inBox(uKMin, uKMax) < 0.5) discard;
+        float zn = abs(vZn);   // 內插後才取絕對值，頂面不細分也正確
+        bool gSide = zn > 0.999, gInside = false; float gDmin = 1000.0;
+        if (uGOn > 0.5 && gSide) {
+          // 側面：點是否在車窗開口多邊形內，以及到開口邊緣的距離
+          for (int i = 0; i < 16; i++) {
+            vec2 a = uDA[i], b = uDB[i];
+            if (((a.y > vLoc.y) != (b.y > vLoc.y)) && (vLoc.x < (b.x - a.x) * (vLoc.y - a.y) / (b.y - a.y) + a.x)) gInside = !gInside;
+            vec2 ab = b - a; float t = clamp(dot(vLoc.xy - a, ab) / max(dot(ab, ab), 1e-8), 0.0, 1.0);
+            gDmin = min(gDmin, length(vLoc.xy - a - ab * t));
+          }
+        }
+        // 開啟件帶走的範圍：車門（kind 1）只帶走側面的車窗與門上緣；尾門（kind 2）只帶走頂面的玻璃與橫樑
+        float mvDoor = (uGOn < 0.5 || (gSide && (gInside || vLoc.y < uGP.z))) ? 1.0 : 0.0;
+        float mvGate = (uGOn < 0.5 || (!gSide && zn <= uGP.x)) ? 1.0 : 0.0;
+        if (uMode < 0.5) {
+          for (int i = 0; i < 8; i++) {
+            float mv = uCKind[i] < 0.5 ? 1.0 : (uCKind[i] < 1.5 ? mvDoor : mvGate);
+            if (inBox(uCMin[i], uCMax[i]) * mv > 0.5) discard;
+          }
+        } else {
+          float mv = uKKind < 0.5 ? 1.0 : (uKKind < 1.5 ? mvDoor : mvGate);
+          if (inBox(uKMin, uKMax) * mv < 0.5) discard;
+        }
         if (uSeam > 0.5) {
           float side = step(uSeamA.z, abs(vLoc.z)) * step(uSeamY.x, vLoc.y) * step(vLoc.y, uSeamY.y);
           float sm = max(max(line(vLoc.x, uDoorX.x), line(vLoc.x, uDoorX.y)), line(vLoc.x, uDoorX.z));
@@ -205,10 +309,44 @@
           float gate = line(vLoc.x, uSeamA.y) * step(uSeamY.z, vLoc.y);
           diffuseColor.rgb *= 1.0 - 0.75 * max(max(sm * side, hood), gate);
         }
+        if (uGOn > 0.5) {
+          if (gSide) {
+            // 側面：車窗開口外為車身色，沿開口內緣一圈窗框，再加黑色直柱
+            vec2 p = vLoc.xy;
+            float sd = gInside ? gDmin : -gDmin, aa = max(length(fwidth(p)), 1e-4);
+            gPaint = 1.0 - smoothstep(-aa, aa, sd);
+            gTrim = 1.0 - smoothstep(uGP.y - aa, uGP.y + aa, sd);
+            for (int i = 0; i < 2; i++) gTrim = max(gTrim, smoothstep(uPil[i].x - aa, uPil[i].x + aa, p.x) * (1.0 - smoothstep(uPil[i].y - aa, uPil[i].y + aa, p.x)));
+            gTrim *= 1.0 - gPaint;
+          } else {
+            // 頂面與圓角：兩側縱樑與橫樑為車身色
+            float az = max(fwidth(zn), 1e-4), ax = max(fwidth(vLoc.x), 1e-4);
+            gPaint = smoothstep(uGP.x - az, uGP.x + az, zn);
+            for (int i = 0; i < 2; i++) {
+              gPaint = max(gPaint, smoothstep(uHdr[i].x - ax, uHdr[i].x + ax, vLoc.x) * (1.0 - smoothstep(uHdr[i].y - ax, uHdr[i].y + ax, vLoc.x)));
+              gTrim = max(gTrim, smoothstep(uFrit[i].x - ax, uFrit[i].x + ax, vLoc.x) * (1.0 - smoothstep(uFrit[i].y - ax, uFrit[i].y + ax, vLoc.x)));
+            }
+            gTrim *= 1.0 - gPaint;
+          }
+          diffuseColor.rgb = mix(mix(diffuseColor.rgb, uPaintC, gPaint), uTrimC, gTrim);
+        }
+        if (uArchOn > 0.5) {
+          float ra = min(distance(vLoc.xy, vec2(uArch.x, uArch.y)), distance(vLoc.xy, vec2(-uArch.x, uArch.y)));
+          float aw = max(fwidth(ra), 1e-4);
+          gDark = (1.0 - smoothstep(uArch.z - aw, uArch.z + aw, ra)) * smoothstep(0.78, 0.84, zn);   // 只畫在車側
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.012, 0.013, 0.015), gDark);
+        }
         float h = uHOn * max(inBox(uHMin, uHMax), inBox(uH2Min, uH2Max));
         float s = uSOn * max(inBox(uSMin, uSMax), inBox(uS2Min, uS2Max));
-        diffuseColor.rgb = mix(diffuseColor.rgb, uTint, max(s * 0.6, h * 0.32));
-        if (!gl_FrontFacing) diffuseColor.rgb = vec3(0.045);`);
+        diffuseColor.rgb = mix(diffuseColor.rgb, uTint, max(s * 0.6, h * 0.32) * (1.0 - gPaint));
+        if (!gl_FrontFacing) diffuseColor.rgb = vec3(0.045);`)
+        .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
+        roughnessFactor = mix(mix(mix(roughnessFactor, uPaintMR.y, gPaint), 0.85, gTrim), 0.9, gDark);
+        metalnessFactor = mix(mix(mix(metalnessFactor, uPaintMR.x, gPaint), 1.0, gTrim), 0.0, gDark);   // 黑邊：金屬度拉滿讓反射率跟著底色變暗`)
+        .replace('#include <lights_physical_fragment>', `#include <lights_physical_fragment>
+        #ifdef CLEARCOAT
+          material.clearcoat *= 1.0 - max(gDark, gTrim);   // 窗框與黑邊是霧面，不要映出天空
+        #endif`);
     };
     return m;
   }
@@ -242,13 +380,26 @@
     disposables.push(bodyGeo, glassGeo);
 
     const tint = { body: makeTint(THREE, params.seams), glass: makeTint(THREE, null) };
-    const ops = openings.map((o) => ({ ...o }));
+    const detail = makeDetail(THREE, params);
+    const znOf = glassGeo.userData.znOf;
+    // 玻璃罩上的開啟範圍加上種類（車門／尾門），決定帶走玻璃罩的哪一部分
+    const ops = openings.map((o) => ({ ...o, glassRegion: o.glassRegion ? { ...o.glassRegion, kind: detail.boxKind(o.glassRegion) } : o.glassRegion }));
     const bodyCuts = ops.filter((o) => o.bodyRegion).map((o) => o.bodyRegion).concat([params.cabin_cuts.body]);
     const glassCuts = ops.filter((o) => o.glassRegion).map((o) => o.glassRegion).concat([params.cabin_cuts.glass]);
     if (bodyCuts.length > 8 || glassCuts.length > 8) console.warn('開啟件超過 8 個，著色器只會處理前 8 個。');
-
+    /** 射線打到玻璃罩的點在橫向的位置：三個頂點都在端面上就是側面（1），否則用 znOf。 */
+    function znHit(o, h, ref) {
+      const a = o.geometry.attributes.aZn, f = h.face;
+      if (a && f && Math.abs(a.getX(f.a)) > 0.9999 && Math.abs(a.getX(f.b)) > 0.9999 && Math.abs(a.getX(f.c)) > 0.9999) return 1;
+      return Math.min(znOf(ref), 0.99);
+    }
+    /** 只有座標、沒有三角形時的估計（已存的標註點）：側面內部的 znOf 約 0.93 以上。 */
+    const znGuess = (ref) => (znOf(ref) > 0.9 ? 1 : znOf(ref));
+    /** 參考座標上的點是否屬於這個範圍（玻璃罩上還要看開啟件實際帶走的部分，znv 為該點的橫向位置）。 */
+    const inRegion = (ref, b, surface, znv) => inBox(ref, b) && (surface !== 'glass' || detail.moves(b.kind, ref, znv));
+    const bodyTopY = params.cabin_cuts.glass.max[1];   // 玻璃罩從這個高度以上才看得到
     function shell(geo, surface, keep, cuts) {
-      const mat = shellMaterial(THREE, tint[surface], surface, keep, cuts);
+      const mat = shellMaterial(THREE, tint[surface], surface, keep, cuts, detail);
       if (surface === 'body') paintMats.push(mat);
       disposables.push(mat);
       const m = new THREE.Mesh(geo, mat);
@@ -434,7 +585,7 @@
       const sk = T.skirts || { x: [-0.97, 0.97], y: [0.225, 0.34] };
       for (const m of [
         panel(null, 'front', fl.z, fl.y, satin()),
-        panel(null, 'rear', rl.z, rl.y, satin()),
+        panel(null, 'rear', rl.z, rl.shape || rl.y, satin()),   // shape（選用）：[[z, 下緣 y, 上緣 y], ...]
         panel(null, 'left', sk.x, sk.y, satin()),
         panel(null, 'right', sk.x, sk.y, satin())
       ]) if (m) group.add(m);
@@ -515,14 +666,28 @@
       }
     }
 
-    // 後照鏡（隨前門開啟）
-    for (const [key, side] of [['mirror-L', -1], ['mirror-R', 1]]) {
-      const mat = new THREE.MeshPhysicalMaterial({ color: 0xe9eae7, metalness: 0.15, roughness: 0.32, clearcoat: 1 });
-      paintMats.push(mat);
-      const head = partMesh(key, new THREE.SphereGeometry(1, 28, 18), mat, [0.92, 1.06, side * 1.08]);
-      head.scale.set(0.075, 0.06, 0.13);
-      const stalk = partMesh(key, box(0.08, 0.035, 0.14), std(0x15171a, { roughness: 0.55 }), [0.95, 1.01, side * 0.97]);
-      attachTo(head, openingOf(key)); attachTo(stalk, openingOf(key));
+    // 後照鏡（隨前門開啟）：車身色鏡殼、朝後的鏡面、黑色底座。fixtures.mirror 可調位置與大小
+    {
+      const mc = (params.fixtures || {}).mirror || {};
+      const at = mc.at || [0.92, 1.085, 1.075], size = mc.size || [0.075, 0.115, 0.2];   // 前後厚、高、寬
+      const [dx, hy, wz] = size, r = Math.min(hy, wz) * 0.36, bt = dx * 0.3;
+      const sh = new THREE.Shape();   // 鏡殼正面輪廓（寬 × 高的圓角矩形）
+      sh.moveTo(-wz / 2 + r, -hy / 2); sh.lineTo(wz / 2 - r, -hy / 2); sh.quadraticCurveTo(wz / 2, -hy / 2, wz / 2, -hy / 2 + r);
+      sh.lineTo(wz / 2, hy / 2 - r); sh.quadraticCurveTo(wz / 2, hy / 2, wz / 2 - r, hy / 2);
+      sh.lineTo(-wz / 2 + r, hy / 2); sh.quadraticCurveTo(-wz / 2, hy / 2, -wz / 2, hy / 2 - r);
+      sh.lineTo(-wz / 2, -hy / 2 + r); sh.quadraticCurveTo(-wz / 2, -hy / 2, -wz / 2 + r, -hy / 2);
+      const headGeo = new THREE.ExtrudeGeometry(sh, { depth: dx - bt * 2, bevelEnabled: true, bevelThickness: bt, bevelSize: r * 0.5, bevelSegments: 5, curveSegments: 8 });
+      headGeo.center(); headGeo.rotateY(Math.PI / 2);   // 寬度轉到 z、厚度轉到 x
+      for (const [key, side] of [['mirror-L', -1], ['mirror-R', 1]]) {
+        const mat = new THREE.MeshPhysicalMaterial({ color: 0xe9eae7, metalness: 0.15, roughness: 0.32, clearcoat: 1, clearcoatRoughness: 0.08 });
+        paintMats.push(mat);
+        const head = partMesh(key, headGeo, mat, [at[0], at[1], side * at[2]]);
+        const glassM = partMesh(key, box(0.004, hy * 0.72, wz * 0.8), std(0x20262d, { metalness: 0.9, roughness: 0.08 }), [at[0], at[1], side * at[2]]);
+        glassM.position.x -= dx / 2 + 0.001; glassM.castShadow = false;
+        const stalk = partMesh(key, box(dx * 0.8, 0.03, wz * 0.75), std(0x15171a, { roughness: 0.55 }), [at[0], at[1], side * at[2]]);
+        stalk.position.y -= hy / 2 + 0.012; stalk.position.z -= side * wz * 0.45;
+        for (const m of [head, glassM, stalk]) attachTo(m, openingOf(key));
+      }
     }
 
     // 門把（隨車門開啟）與充電口：貼合車身側面
@@ -639,15 +804,25 @@
         const o = h.object;
         if (!o.userData.keep && !o.userData.cuts && !o.userData.part) continue;
         const ref = closedRef(o, h.point);
-        if (o.userData.keep && !inBox(ref, o.userData.keep)) continue;
-        if (o.userData.cuts && o.userData.cuts.some((b) => inBox(ref, b))) continue;
-        out.push({ h, o, ref });
+        const sf = o.userData.surface, znv = sf === 'glass' ? znHit(o, h, ref) : 0;
+        if (o.userData.keep && !inRegion(ref, o.userData.keep, sf, znv)) continue;
+        if (o.userData.cuts && o.userData.cuts.some((b) => inRegion(ref, b, sf, znv))) continue;
+        out.push({ h, o, ref, znv });
       }
       return out;
     }
     function classify(surface, ref) {
       const z = zones[surface].find((zz) => inBox(ref, zz));
       return z ? z.code : surface === 'body' ? 'body' : 'roof';
+    }
+    // 側窗的車項：玻璃罩上範圍整個在車的一側的那個部位（左右各一個範圍、同一個車項）
+    const sideGlassCode = (zones.glass.find((z) => z.max[2] <= 0 || z.min[2] >= 0) || {}).code;
+    /** 玻璃罩上的點：側面的玻璃 → 側窗；其餘玻璃照部位範圍分類；車頂縱樑與橫樑 → roof-rails 對應的車項；車柱、窗框 → 車身。 */
+    function classifyGlass(ref, zn) {
+      if (!detail.glassOn) return classify('glass', ref);
+      const side = zn > detail.SIDE, region = detail.glassRegion(ref, zn);
+      if (region === 'glass') return (side && sideGlassCode) || classify('glass', ref);
+      return side ? 'body' : meshKeyToPart['roof-rails'] || 'body';
     }
     /** 該部位（與點）由哪個開啟件帶動，沒有則為 null。 */
     function openingFor(partCode, refP) {
@@ -659,12 +834,20 @@
         const d = (o) => v.distanceToSquared(new THREE.Vector3(...o.hinge));
         return carriers.reduce((a, b) => (d(b) < d(a) ? b : a)).code;
       }
-      const zs = zoneByCode[partCode];
-      if (!zs || !v) return null;
+      const zs = zoneByCode[partCode] || [];
+      if (!v) return null;
+      // 側窗與車頂橫樑不照部位範圍分類（見 classifyGlass），直接看哪個開啟件帶走這個點
+      if (detail.glassOn && (partCode === sideGlassCode || partCode === meshKeyToPart['roof-rails'])) {
+        const o = ops.find((x) => x.glassRegion && inRegion(v, x.glassRegion, 'glass', znGuess(v)));
+        return o ? o.code : null;
+      }
       for (const z of zs) {
         if (!inBox(v, z)) continue;
         const key = z.surface === 'body' ? 'bodyRegion' : 'glassRegion';
-        const o = ops.find((x) => x[key] && inBox(v, x[key]));
+        // 「車身」也包含玻璃罩上的門上緣，兩種範圍都要找
+        const zg = znGuess(v);
+        const o = ops.find((x) => x[key] && inRegion(v, x[key], z.surface, zg))
+          || (partCode === 'body' && v.y > bodyTopY ? ops.find((x) => x.glassRegion && inRegion(v, x.glassRegion, 'glass', zg)) : null);
         return o ? o.code : null;
       }
       return null;
@@ -676,8 +859,9 @@
       raycast(rc) {
         const v = validHits(rc.intersectObjects(pickables, false))[0];
         if (!v) return null;
-        const { h, o, ref } = v;
-        const part = o.userData.surface ? classify(o.userData.surface, ref) : o.userData.part;
+        const { h, o, ref, znv } = v;
+        const part = o.userData.surface === 'glass' ? classifyGlass(ref, znv)
+          : o.userData.surface ? classify(o.userData.surface, ref) : o.userData.part;
         const n = h.face ? h.face.normal.clone().transformDirection(o.matrixWorld) : new THREE.Vector3(0, 1, 0);
         if (n.dot(rc.ray.direction) > 0) n.negate();
         if (o.userData.pivot) n.applyQuaternion(qInv.copy(o.userData.pivot.quaternion).invert());
@@ -713,6 +897,8 @@
       },
       setPaint(c) {
         for (const m of paintMats) { m.color.set(c.hex); m.metalness = +c.metalness; m.roughness = +c.roughness; }
+        // 玻璃罩上的車身色區域（車柱、車頂縱樑）跟著換色
+        detail.uniforms.uPaintC.value.set(c.hex); detail.uniforms.uPaintMR.value.set(+c.metalness, +c.roughness);
       },
       setOpen(code, open, instant) {
         const p = pivots[code]; if (!p) return;
